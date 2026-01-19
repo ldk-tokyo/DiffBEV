@@ -1,0 +1,156 @@
+"""
+兼容性检查工具模块
+
+本模块提供版本兼容性检查功能，确保项目在正确的环境中运行。
+"""
+import warnings
+import sys
+
+
+def check_pytorch_version(raise_error=True):
+    """
+    检查PyTorch版本是否兼容
+    
+    Args:
+        raise_error (bool): 如果为True，不兼容时抛出异常；如果为False，仅返回结果
+        
+    Returns:
+        bool: 如果版本兼容返回True，否则返回False
+        
+    Raises:
+        RuntimeError: 如果版本不兼容且raise_error=True
+    """
+    try:
+        import torch
+    except ImportError:
+        if raise_error:
+            raise RuntimeError("PyTorch未安装，请先安装PyTorch 1.9.1")
+        return False
+    
+    pytorch_version = torch.__version__
+    # 处理版本号格式，如 "1.9.1+cu111"
+    version_parts = pytorch_version.split('+')[0].split('.')
+    pytorch_major = int(version_parts[0])
+    
+    if pytorch_major >= 2:
+        error_msg = (
+            f"\n{'='*80}\n"
+            f"PyTorch版本不兼容！\n"
+            f"{'='*80}\n"
+            f"当前版本: {pytorch_version}\n"
+            f"要求版本: 1.x (推荐1.9.1)\n\n"
+            f"原因: mmcv-full 1.3.x仅支持PyTorch 1.x\n"
+            f"解决方案: 请降级到PyTorch 1.9.1\n"
+            f"{'='*80}\n"
+        )
+        
+        if raise_error:
+            raise RuntimeError(error_msg)
+        else:
+            warnings.warn(error_msg)
+            return False
+    
+    return True
+
+
+def check_mmcv_version(raise_error=False, allow_mmcv2=False):
+    """
+    检查MMCV版本是否兼容
+    
+    Args:
+        raise_error (bool): 如果为True，不兼容时抛出异常；如果为False，仅警告
+        allow_mmcv2 (bool): 如果为True，允许mmcv 2.x版本（用于PyTorch 2.x）
+        
+    Returns:
+        bool: 如果版本兼容返回True，否则返回False
+    """
+    try:
+        import mmcv
+        mmcv_version = mmcv.__version__
+        version_parts = mmcv_version.split('.')
+        mmcv_major = int(version_parts[0])
+        mmcv_minor = int(version_parts[1]) if len(version_parts) > 1 else 0
+        
+        # 检查是否在推荐范围内
+        if mmcv_major == 1 and 3 <= mmcv_minor < 4:
+            # mmcv 1.3.x - 旧版本（PyTorch 1.x）
+            return True
+        elif allow_mmcv2 and mmcv_major >= 2:
+            # mmcv 2.x - 新版本（PyTorch 2.x）
+            # 检查是否安装了mmengine（必需）
+            try:
+                import mmengine
+                return True
+            except ImportError:
+                error_msg = (
+                    f"MMCV {mmcv_version} 已安装，但缺少必需的 mmengine 模块\n"
+                    f"请运行: pip install mmengine>=0.10.0"
+                )
+                if raise_error:
+                    raise RuntimeError(error_msg)
+                else:
+                    warnings.warn(error_msg)
+                return False
+        else:
+            # 不兼容的版本
+            if mmcv_major >= 2:
+                warning_msg = (
+                    f"MMCV版本 {mmcv_version} 检测到（需要PyTorch 2.x）\n"
+                    f"如果使用PyTorch 2.x，这是正确的\n"
+                    f"请确保已安装 mmengine: pip install mmengine>=0.10.0"
+                )
+            else:
+                warning_msg = (
+                    f"MMCV版本 {mmcv_version} 不在推荐范围内\n"
+                    f"推荐版本: mmcv-full==1.3.15 (PyTorch 1.x) 或 mmcv>=2.1.0 (PyTorch 2.x)"
+                )
+            
+            if raise_error:
+                raise RuntimeError(warning_msg)
+            else:
+                warnings.warn(warning_msg)
+            return False
+    except ImportError:
+        warnings.warn("MMCV未安装")
+        return False
+
+
+def check_environment(raise_on_pytorch_error=True, raise_on_mmcv_error=False):
+    """
+    完整的环境兼容性检查
+    
+    Args:
+        raise_on_pytorch_error (bool): PyTorch版本不兼容时是否抛出异常
+        raise_on_mmcv_error (bool): MMCV版本不兼容时是否抛出异常
+        
+    Returns:
+        dict: 检查结果字典，包含各组件状态
+    """
+    results = {
+        'pytorch_ok': False,
+        'mmcv_ok': False,
+        'pytorch_version': None,
+        'mmcv_version': None,
+    }
+    
+    # 检查PyTorch
+    try:
+        import torch
+        results['pytorch_version'] = torch.__version__
+        results['pytorch_ok'] = check_pytorch_version(raise_error=raise_on_pytorch_error)
+    except Exception as e:
+        if raise_on_pytorch_error:
+            raise
+        results['pytorch_ok'] = False
+    
+    # 检查MMCV
+    try:
+        import mmcv
+        results['mmcv_version'] = mmcv.__version__
+        results['mmcv_ok'] = check_mmcv_version(raise_error=raise_on_mmcv_error)
+    except Exception as e:
+        if raise_on_mmcv_error:
+            raise
+        results['mmcv_ok'] = False
+    
+    return results

@@ -1,0 +1,190 @@
+Looking in links: https://download.openmmlab.com/mmcv/dist/cu111/torch1.9.0/index.html
+Collecting mmcv
+  Using cached https://download.openmmlab.com/mmcv/dist/cu111/torch1.9.0/mmcv-2.2.0-cp38-cp38-manylinux1_x86_64.whl (77.6 MB)
+Requirement already satisfied: addict in /home/ldk950413/.local/share/mamba/envs/diffbev/lib/python3.8/site-packages (from mmcv) (2.4.0)
+Collecting mmengine>=0.3.0 (from mmcv)
+  Using cached mmengine-0.10.7-py3-none-any.whl.metadata (20 kB)
+Requirement already satisfied: numpy in /home/ldk950413/.local/share/mamba/envs/diffbev/lib/python3.8/site-packages (from mmcv) (1.24.4)
+Requirement already satisfied: packaging in /home/ldk950413/.local/share/mamba/envs/diffbev/lib/python3.8/site-packages (from mmcv) (24.2)
+Requirement already satisfied: Pillow in /home/ldk950413/.local/share/mamba/envs/diffbev/lib/python3.8/site-packages (from mmcv) (10.4.0)
+Requirement already satisfied: pyyaml in /home/ldk950413/.local/share/mamba/envs/diffbev/lib/python3.8/site-packages (from mmcv) (6.0.3)
+Requirement already satisfied: yapf in /home/ldk950413/.local/share/mamba/envs/diffbev/lib/python3.8/site-packages (from mmcv) (0.30.0)
+Requirement already satisfied: opencv-python>=3 in /home/ldk950413/.local/share/mamba/envs/diffbev/lib/python3.8/site-packages (from mmcv) (4.11.0.86)
+Requirement already satisfied: matplotlib in /home/ldk950413/.local/share/mamba/envs/diffbev/lib/python3.8/site-packages (from mmengine>=0.3.0->mmcv) (3.7.5)
+Requirement already satisfied: rich in /home/ldk950413/.local/share/mamba/envs/diffbev/lib/python3.8/site-packages (from mmengine>=0.3.0->mmcv) (13.4.2)
+Requirement already satisfied: termcolor in /home/ldk950413/.local/share/mamba/envs/diffbev/lib/python3.8/site-packages (from mmengine>=0.3.0->mmcv) (2.4.0)
+Requirement already satisfied: contourpy>=1.0.1 in /home/ldk950413/.local/share/mamba/envs/diffbev/lib/python3.8/site-packages (from matplotlib->mmengine>=0.3.0->mmcv) (1.1.1)
+Requirement already satisfied: cycler>=0.10 in /home/ldk950413/.local/share/mamba/envs/diffbev/lib/python3.8/site-packages (from matplotlib->mmengine>=0.3.0->mmcv) (0.12.1)
+Requirement already satisfied: fonttools>=4.22.0 in /home/ldk950413/.local/share/mamba/envs/diffbev/lib/python3.8/site-packages (from matplotlib->mmengine>=0.3.0->mmcv) (4.57.0)
+Requirement already satisfied: kiwisolver>=1.0.1 in /home/ldk950413/.local/share/mamba/envs/diffbev/lib/python3.8/site-packages (from matplotlib->mmengine>=0.3.0->mmcv) (1.4.7)
+Requirement already satisfied: pyparsing>=2.3.1 in /home/ldk950413/.local/share/mamba/envs/diffbev/lib/python3.8/site-packages (from matplotlib->mmengine>=0.3.0->mmcv) (3.1.4)
+Requirement already satisfied: python-dateutil>=2.7 in /home/ldk950413/.local/share/mamba/envs/diffbev/lib/python3.8/site-packages (from matplotlib->mmengine>=0.3.0->mmcv) (2.9.0.post0)
+Requirement already satisfied: importlib-resources>=3.2.0 in /home/ldk950413/.local/share/mamba/envs/diffbev/lib/python3.8/site-packages (from matplotlib->mmengine>=0.3.0->mmcv) (6.4.5)
+Requirement already satisfied: markdown-it-py>=2.2.0 in /home/ldk950413/.local/share/mamba/envs/diffbev/lib/python3.8/site-packages (from rich->mmengine>=0.3.0->mmcv) (3.0.0)
+Requirement already satisfied: pygments<3.0.0,>=2.13.0 in /home/ldk950413/.local/share/mamba/envs/diffbev/lib/python3.8/site-packages (from rich->mmengine>=0.3.0->mmcv) (2.19.2)
+Requirement already satisfied: typing-extensions<5.0,>=4.0.0 in /home/ldk950413/.local/share/mamba/envs/diffbev/lib/python3.8/site-packages (from rich->mmengine>=0.3.0->mmcv) (4.13.2)
+Requirement already satisfied: zipp>=3.1.0 in /home/ldk950413/.local/share/mamba/envs/diffbev/lib/python3.8/site-packages (from importlib-resources>=3.2.0->matplotlib->mmengine>=0.3.0->mmcv) (3.20.2)
+Requirement already satisfied: mdurl~=0.1 in /home/ldk950413/.local/share/mamba/envs/diffbev/lib/python3.8/site-packages (from markdown-it-py>=2.2.0->rich->mmengine>=0.3.0->mmcv) (0.1.2)
+Requirement already satisfied: six>=1.5 in /home/ldk950413/.local/share/mamba/envs/diffbev/lib/python3.8/site-packages (from python-dateutil>=2.7->matplotlib->mmengine>=0.3.0->mmcv) (1.17.0)
+Using cached mmengine-0.10.7-py3-none-any.whl (452 kB)
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting mmsegmentation==0.18.0
+  Using cached mmsegmentation-0.18.0.tar.gz (261 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmpbn2xdqwg', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmpzqij2w4q', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmp8_ztgog8', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmpevnv_d47', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmpova1trpa', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmp77ncbhci', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmpjycssfsi', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmp6b7p5_us', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmpwv664noe', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmpuw4kju5u', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmpwyaxs9_g', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmppscmggg8', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmpmtcd4oi3', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmpe55dv6bp', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmpiixssesx', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmpdlw37v0m', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmpm2562gcu', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmp1pwsjds9', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmpus3p02vh', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmpzscjblgh', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmpxyh1p027', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmp7e5n745f', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmpql3j0sra', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmpzjlpx2s4', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmpuh92rtsj', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmpnu_xov6x', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmpc8zlcdsh', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmpfn_vy34d', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmpcuhnx1as', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmpz4pm7usz', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmp8vcamm8c', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmp_kvg9red', '--no-deps', '--no-binary', ':all:']
+pip download failed with args: ['mmsegmentation==0.18.0', '-d', '/tmp/tmpeayh9klj', '--no-deps', '--no-binary', ':all:']

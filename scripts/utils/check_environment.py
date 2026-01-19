@@ -1,0 +1,106 @@
+#!/usr/bin/env python
+"""
+环境版本检查脚本
+
+用于快速检查DiffBEV项目的环境兼容性
+"""
+import sys
+
+def check_environment():
+    """检查环境版本兼容性"""
+    print("="*80)
+    print("DiffBEV 环境版本检查")
+    print("="*80)
+    
+    # 检查Python版本
+    print(f"\nPython版本: {sys.version.split()[0]}")
+    python_version = sys.version_info
+    if python_version.major == 3 and python_version.minor in [7, 8]:
+        print("  ✓ Python版本兼容 (3.7或3.8)")
+    else:
+        print(f"  ⚠ 警告: Python {python_version.major}.{python_version.minor} 可能不兼容，推荐使用3.7或3.8")
+    
+    # 检查PyTorch
+    try:
+        import torch
+        pytorch_version = torch.__version__
+        pytorch_major = int(pytorch_version.split('.')[0])
+        pytorch_minor = int(pytorch_version.split('.')[1])
+        print(f"\nPyTorch版本: {pytorch_version}")
+        
+        if pytorch_major >= 2:
+            print("  ❌ 错误: PyTorch版本 >= 2.0，不兼容！")
+            print("     本项目使用的mmcv-full 1.3.x仅支持PyTorch 1.x")
+            print("     请降级到PyTorch 1.9.1")
+            return False
+        elif pytorch_major == 1 and pytorch_minor == 9:
+            print("  ✓ PyTorch版本兼容 (推荐1.9.1)")
+        else:
+            print(f"  ⚠ 警告: PyTorch {pytorch_version} 可能兼容，但推荐使用1.9.1")
+    except ImportError:
+        print("\n❌ PyTorch未安装")
+        return False
+    
+    # 检查torchvision
+    try:
+        import torchvision
+        tv_version = torchvision.__version__
+        print(f"torchvision版本: {tv_version}")
+        if tv_version.startswith('0.10'):
+            print("  ✓ torchvision版本兼容")
+        else:
+            print(f"  ⚠ 警告: 推荐使用torchvision 0.10.1")
+    except ImportError:
+        print("⚠ torchvision未安装")
+    
+    # 检查MMCV
+    try:
+        from mmengine import Config as mmcv_Config
+import mmcv
+        mmcv_version = mmcv.__version__
+        mmcv_major = int(mmcv_version.split('.')[0])
+        mmcv_minor = int(mmcv_version.split('.')[1])
+        print(f"\nMMCV版本: {mmcv_version}")
+        
+        if mmcv_major == 1 and 3 <= mmcv_minor < 4:
+            print("  ✓ MMCV版本兼容 (1.3.13 - 1.4.0)")
+        else:
+            print(f"  ⚠ 警告: MMCV {mmcv_version} 不在推荐范围内 (1.3.13 - 1.4.0)")
+    except ImportError:
+        print("\n⚠ MMCV未安装")
+        print("  建议安装: pip install mmcv-full==1.3.15")
+    
+    # 检查MMSegmentation
+    try:
+        import mmseg
+        mmseg_version = mmseg.__version__
+        print(f"\nMMSegmentation版本: {mmseg_version}")
+        print("  ✓ MMSegmentation已安装")
+    except ImportError:
+        print("\n⚠ MMSegmentation未安装")
+        print("  建议运行: pip install -v -e .")
+    
+    # 检查CUDA
+    try:
+        import torch
+        if torch.cuda.is_available():
+            cuda_version = torch.version.cuda
+            print(f"\nCUDA可用: 是")
+            print(f"CUDA版本: {cuda_version}")
+            print(f"GPU数量: {torch.cuda.device_count()}")
+            for i in range(torch.cuda.device_count()):
+                print(f"  GPU {i}: {torch.cuda.get_device_name(i)}")
+        else:
+            print("\n⚠ CUDA不可用")
+    except:
+        print("\n⚠ 无法检查CUDA状态")
+    
+    print("\n" + "="*80)
+    print("检查完成")
+    print("="*80 + "\n")
+    
+    return True
+
+if __name__ == '__main__':
+    success = check_environment()
+    sys.exit(0 if success else 1)

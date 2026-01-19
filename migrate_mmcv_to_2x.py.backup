@@ -1,0 +1,169 @@
+#!/usr/bin/env python
+"""
+MMCV 1.x 到 2.x 自动迁移脚本
+
+该脚本会自动替换代码中的API调用，从mmcv 1.x迁移到mmcv 2.x + mmengine
+"""
+
+import os
+import re
+import sys
+from pathlib import Path
+
+
+# API替换映射
+REPLACEMENTS = [
+    # mmcv.runner → mmengine
+    (r'from mmcv\.runner import (.*?)$', r'from mmengine.runner import \1'),
+    (r'from mmcv\.runner\.base_module import (.*?)$', r'from mmengine.model import \1'),
+    (r'from mmcv\.runner\.runner import (.*?)$', r'from mmengine.runner import \1'),
+    
+    # mmcv.parallel → mmengine
+    (r'from mmcv\.parallel import (.*?)$', r'from mmengine.parallel import \1'),
+    (r'from mmcv\.parallel\.(.*?) import (.*?)$', r'from mmengine.parallel.\1 import \2'),
+    
+    # mmcv.Config → mmengine.Config
+    (r'import mmcv$', r'from mmengine import Config as mmcv_Config\nimport mmcv'),
+    (r'from mmcv import Config', r'from mmengine import Config'),
+    (r'mmcv\.Config\.fromfile', r'Config.fromfile'),
+    (r'isinstance\(.*mmcv\.Config\)', r'isinstance(..., Config)'),  # 需要手动检查
+    
+    # mmcv.utils → mmengine
+    (r'from mmcv\.utils import print_log', r'from mmengine.logging import print_log'),
+    (r'from mmcv\.utils import Registry', r'from mmengine.registry import Registry'),
+    (r'from mmcv\.utils import build_from_cfg', r'from mmengine.registry import build_from_cfg'),
+    (r'from mmcv\.utils import ConfigDict', r'from mmengine import ConfigDict'),
+    (r'from mmcv\.utils\.dict import DictAction', r'from mmengine.utils import DictAction'),
+    
+    # mmcv.cnn.utils.sync_bn（需要检查）
+    # (r'from mmcv\.cnn\.utils\.sync_bn import revert_sync_batchnorm', 
+    #  r'from mmcv.cnn.utils import revert_sync_batchnorm'),  # 可能需要保留原路径
+]
+
+
+def migrate_file(file_path):
+    """迁移单个文件"""
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+    except Exception as e:
+        print(f"❌ 无法读取文件 {file_path}: {e}")
+        return False
+    
+    original_content = content
+    modified = False
+    
+    # 应用所有替换规则
+    for pattern, replacement in REPLACEMENTS:
+        new_content = re.sub(pattern, replacement, content, flags=re.MULTILINE)
+        if new_content != content:
+            content = new_content
+            modified = True
+    
+    # 特殊处理：mmcv.Config的使用
+    if 'Config.fromfile' in content and 'from mmengine import Config' not in content:
+        # 确保导入Config
+        if 'import mmcv' in content:
+            content = content.replace(
+                'import mmcv',
+                'from mmengine import Config\nimport mmcv'
+            )
+            modified = True
+    
+    # 如果文件被修改，写回
+    if modified:
+        try:
+            # 创建备份
+            backup_path = str(file_path) + '.backup'
+            with open(backup_path, 'w', encoding='utf-8') as f:
+                f.write(original_content)
+            
+            # 写入新内容
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            
+            print(f"✓ 已迁移: {file_path}")
+            print(f"  备份已保存到: {backup_path}")
+            return True
+        except Exception as e:
+            print(f"❌ 无法写入文件 {file_path}: {e}")
+            return False
+    
+    return False
+
+
+def find_python_files(root_dir):
+    """查找所有Python文件"""
+    python_files = []
+    for root, dirs, files in os.walk(root_dir):
+        # 跳过不需要的目录
+        dirs[:] = [d for d in dirs if d not in ['.git', '__pycache__', '.idea', 'work_dirs', 'dist', 'build', 'mmsegmentation.egg-info']]
+        
+        for file in files:
+            if file.endswith('.py'):
+                python_files.append(Path(root) / file)
+    
+    return python_files
+
+
+def main():
+    """主函数"""
+    print("="*80)
+    print("MMCV 1.x → 2.x 自动迁移脚本")
+    print("="*80)
+    print()
+    
+    # 确认
+    response = input("⚠️  这将修改代码文件。是否继续？ (yes/no): ")
+    if response.lower() != 'yes':
+        print("已取消。")
+        return
+    
+    # 项目根目录
+    project_root = Path(__file__).parent
+    print(f"\n项目根目录: {project_root}")
+    
+    # 查找所有Python文件
+    python_files = find_python_files(project_root)
+    print(f"\n找到 {len(python_files)} 个Python文件")
+    
+    # 迁移文件
+    migrated_count = 0
+    failed_count = 0
+    
+    print("\n开始迁移...")
+    print("-"*80)
+    
+    for file_path in python_files:
+        if migrate_file(file_path):
+            migrated_count += 1
+        else:
+            # 检查是否包含需要迁移的代码
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                if any(keyword in content for keyword in ['mmcv.runner', 'mmcv.parallel', 'mmcv.Config', 'from mmcv.utils import']):
+                    # 文件包含需要迁移的代码，但可能不需要修改或需要手动检查
+                    pass
+            except:
+                failed_count += 1
+    
+    print("-"*80)
+    print(f"\n迁移完成:")
+    print(f"  ✓ 成功迁移: {migrated_count} 个文件")
+    print(f"  ✗ 失败: {failed_count} 个文件")
+    print()
+    print("⚠️  重要提示:")
+    print("1. 请仔细检查修改后的代码")
+    print("2. 备份文件已保存为 *.backup")
+    print("3. 某些API可能需要手动调整")
+    print("4. 运行测试确保一切正常")
+    print()
+    print("建议下一步:")
+    print("1. 运行: python -c 'import mmcv; import mmengine; print(\"导入成功\")'")
+    print("2. 测试配置加载")
+    print("3. 运行小规模训练测试")
+
+
+if __name__ == '__main__':
+    main()
