@@ -36,9 +36,20 @@ BACKUP_BRANCH="backup-$(date +%Y%m%d-%H%M%S)"
 git branch "$BACKUP_BRANCH"
 echo "✓ 已创建备份分支: $BACKUP_BRANCH"
 
+# 确保工作区干净（忽略子模块）
+if ! git diff-index --quiet HEAD -- ':!mono-semantic-maps'; then
+    echo "警告：工作区有未提交的更改（子模块除外）"
+    echo "正在stash..."
+    git stash push -m "临时stash before filter-branch"
+    STASHED=1
+else
+    STASHED=0
+fi
+
 # 使用git filter-branch移除大文件
 echo ""
 echo "移除大文件..."
+export FILTER_BRANCH_SQUELCH_WARNING=1
 git filter-branch --force --index-filter \
     "git rm --cached --ignore-unmatch \
         cuda_12.4.0_550.54.14_linux.run \
@@ -59,6 +70,13 @@ echo "清理引用和垃圾回收..."
 rm -rf .git/refs/original/
 git reflog expire --expire=now --all
 git gc --prune=now --aggressive
+
+# 恢复stash（如果有）
+if [ "$STASHED" -eq 1 ]; then
+    echo ""
+    echo "恢复stash..."
+    git stash pop || true
+fi
 
 echo ""
 echo "=========================================="
