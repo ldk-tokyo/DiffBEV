@@ -221,9 +221,10 @@ monitor_training() {
             CPU_MINS="${BASH_REMATCH[1]}"
             CPU_SECS="${BASH_REMATCH[2]}"
             # 如果分钟数>=60，转换为小时和分钟
+            # 使用10#前缀强制按十进制解析，避免八进制问题（如09）
             if [ "$CPU_MINS" -ge 60 ] 2>/dev/null; then
-                CPU_HOURS=$((CPU_MINS / 60))
-                CPU_MINS_REMAINING=$((CPU_MINS % 60))
+                CPU_HOURS=$((10#$CPU_MINS / 60))
+                CPU_MINS_REMAINING=$((10#$CPU_MINS % 60))
                 if [ "$CPU_HOURS" -gt 0 ]; then
                     CPU_TIME_STR="${CPU_HOURS}小时${CPU_MINS_REMAINING}分钟${CPU_SECS}秒"
                 else
@@ -497,13 +498,15 @@ monitor_training() {
                             HOURS="${BASH_REMATCH[2]}"
                             MINS="${BASH_REMATCH[3]}"
                             SECS="${BASH_REMATCH[4]}"
-                            ELAPSED_SECONDS=$((DAYS * 86400 + HOURS * 3600 + MINS * 60 + SECS))
+                            # 使用10#前缀强制按十进制解析，避免八进制问题（如09）
+                            ELAPSED_SECONDS=$((10#$DAYS * 86400 + 10#$HOURS * 3600 + 10#$MINS * 60 + 10#$SECS))
                         elif [[ "$ETIME" =~ ^([0-9]+):([0-9]+):([0-9]+)$ ]]; then
                             # 格式: HH:MM:SS
                             HOURS="${BASH_REMATCH[1]}"
                             MINS="${BASH_REMATCH[2]}"
                             SECS="${BASH_REMATCH[3]}"
-                            ELAPSED_SECONDS=$((HOURS * 3600 + MINS * 60 + SECS))
+                            # 使用10#前缀强制按十进制解析，避免八进制问题（如09）
+                            ELAPSED_SECONDS=$((10#$HOURS * 3600 + 10#$MINS * 60 + 10#$SECS))
                         elif [[ "$ETIME" =~ ^([0-9]+):([0-9]+)$ ]]; then
                             # 格式可能是 HH:MM 或 MM:SS
                             # ps的etime格式规则：
@@ -523,12 +526,14 @@ monitor_training() {
                                 # 绝对错误，应该是MM:SS但数据有问题，按MM:SS处理
                                 MINS="$FIRST_NUM"
                                 SECS="$SECOND_NUM"
-                                ELAPSED_SECONDS=$((MINS * 60 + SECS))
+                                # 使用10#前缀强制按十进制解析，避免八进制问题（如09）
+                                ELAPSED_SECONDS=$((10#$MINS * 60 + 10#$SECS))
                             else
                                 # 两个数字都<60，按MM:SS处理（ps etime的XX:XX格式就是MM:SS）
                                 MINS="$FIRST_NUM"
                                 SECS="$SECOND_NUM"
-                                ELAPSED_SECONDS=$((MINS * 60 + SECS))
+                                # 使用10#前缀强制按十进制解析，避免八进制问题（如09）
+                                ELAPSED_SECONDS=$((10#$MINS * 60 + 10#$SECS))
                             fi
                         fi
                     fi
