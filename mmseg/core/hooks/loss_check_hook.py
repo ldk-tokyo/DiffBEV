@@ -114,7 +114,12 @@ class LossCheckHook(HookBase):
         """检查decode_head的配置"""
         print("\n📋 Decode Head配置检查:")
         
-        # 检查是否有loss权重配置
+        # 检查是否有diffusion相关配置
+        use_diffusion = getattr(decode_head, 'use_diffusion', False)
+        if hasattr(decode_head, 'use_diffusion'):
+            print(f"   ✓ use_diffusion: {decode_head.use_diffusion}")
+        
+        # 检查是否有loss权重配置（baseline配置中这些属性可能不存在，这是正常的）
         if hasattr(decode_head, 'loss_depth_weight'):
             lambda_depth_config = decode_head.loss_depth_weight
             print(f"   ✓ loss_depth_weight (from decode_head): {lambda_depth_config}")
@@ -123,8 +128,12 @@ class LossCheckHook(HookBase):
                     f"⚠️  配置的loss_depth_weight ({lambda_depth_config}) "
                     f"与预期值 ({self.lambda_depth}) 不匹配！"
                 )
+        elif use_diffusion:
+            # 只有在启用diffusion但缺少权重时才警告
+            runner.logger.warning("⚠️  decode_head中没有loss_depth_weight属性（但use_diffusion=True）")
         else:
-            print(f"   ⚠️  decode_head中没有loss_depth_weight属性")
+            # baseline配置中不需要这些属性，这是正常的
+            print(f"   ℹ️  loss_depth_weight未设置（baseline配置，已禁用diffusion）")
         
         if hasattr(decode_head, 'loss_diff_weight'):
             lambda_diff_config = decode_head.loss_diff_weight
@@ -134,12 +143,12 @@ class LossCheckHook(HookBase):
                     f"⚠️  配置的loss_diff_weight ({lambda_diff_config}) "
                     f"与预期值 ({self.lambda_diff}) 不匹配！"
                 )
+        elif use_diffusion:
+            # 只有在启用diffusion但缺少权重时才警告
+            runner.logger.warning("⚠️  decode_head中没有loss_diff_weight属性（但use_diffusion=True）")
         else:
-            print(f"   ⚠️  decode_head中没有loss_diff_weight属性")
-        
-        # 检查是否有diffusion相关配置
-        if hasattr(decode_head, 'use_diffusion'):
-            print(f"   ✓ use_diffusion: {decode_head.use_diffusion}")
+            # baseline配置中不需要这些属性，这是正常的
+            print(f"   ℹ️  loss_diff_weight未设置（baseline配置，已禁用diffusion）")
     
     def _verify_loss_weights(self, runner):
         """验证loss权重配置"""

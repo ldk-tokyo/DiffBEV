@@ -1,11 +1,17 @@
-# 复现规范：200k iterations, AdamW, lr=2e-4, weight_decay=0.01, warmup 1500 iter
-# 优化器配置（严格按照论文复现规范）
+# 复现规范：200k iterations, AdamW, lr=3e-4 (batch size=6时的线性缩放), weight_decay=0.01, warmup 1500 iter
+# 优化器配置（Batch Size=6时的学习率调整）
+# 线性缩放规则：lr = base_lr * (batch_size / base_batch_size)
+# base_lr=2e-4, base_batch_size=4, current_batch_size=6
+# lr = 2e-4 * (6/4) = 3e-4
 optimizer = dict(
     type='AdamW',
-    lr=2e-4,  # 论文规范：2e-4
+    lr=3e-4,  # 从2e-4增加到3e-4（batch size从4增加到6，学习率线性缩放）
     betas=(0.9, 0.999),
     weight_decay=0.01)  # 论文规范：0.01
-optimizer_config = dict()
+# 梯度裁剪：防止梯度爆炸，提高FP16训练稳定性
+optimizer_config = dict(
+    grad_clip=dict(max_norm=35, norm_type=2)  # 梯度裁剪：最大范数35，L2范数
+)
 
 # 学习率策略（严格按照论文复现规范）
 lr_config = dict(

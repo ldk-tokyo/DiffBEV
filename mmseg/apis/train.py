@@ -120,6 +120,37 @@ def train_segmentor(model,
     runner.register_training_hooks(cfg.lr_config, cfg.optimizer_config,
                                    cfg.checkpoint_config, cfg.log_config,
                                    cfg.get('momentum_config', None))
+    
+    # 注册FP16支持（如果配置了FP16）
+    if cfg.get('fp16') is not None:
+        try:
+            # 尝试使用新的torch.amp.GradScaler，如果不可用则使用torch.cuda.amp.GradScaler
+            try:
+                from torch.amp import GradScaler
+                fp16_cfg = cfg.fp16.copy() if isinstance(cfg.fp16, dict) else {}
+                loss_scale = fp16_cfg.get('loss_scale', 512.0)
+                
+                # 初始化FP16 scaler（使用新的API）
+                if hasattr(runner, 'fp16_enabled'):
+                    runner.fp16_enabled = True
+                    runner.fp16_scaler = GradScaler('cuda', init_scale=loss_scale)
+                    logger.info(f"✅ FP16混合精度训练已启用 (loss_scale={loss_scale})")
+            except ImportError:
+                # 回退到旧的API
+                from torch.cuda.amp import GradScaler
+                fp16_cfg = cfg.fp16.copy() if isinstance(cfg.fp16, dict) else {}
+                loss_scale = fp16_cfg.get('loss_scale', 512.0)
+                
+                # 初始化FP16 scaler（使用旧的API）
+                if hasattr(runner, 'fp16_enabled'):
+                    runner.fp16_enabled = True
+                    runner.fp16_scaler = GradScaler(init_scale=loss_scale)
+                    logger.info(f"✅ FP16混合精度训练已启用 (loss_scale={loss_scale}, 使用旧API)")
+            else:
+                logger.warning("⚠️  Runner不支持FP16，将使用FP32训练")
+        except Exception as e:
+            logger.warning(f"⚠️  FP16配置存在但无法启用: {e}")
+            logger.warning("将使用FP32训练")
 
     # 注册Loss结构自检Hook
     try:

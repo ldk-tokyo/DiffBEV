@@ -1,8 +1,8 @@
-# 复现规范：200k iterations, AdamW, lr=2e-4, weight_decay=0.01, warmup 1500 iter
-# 优化器配置（严格按照论文复现规范）
+# 复现规范：200k iterations, AdamW, lr=4e-4 (batch size=8时线性缩放), weight_decay=0.01, warmup 1500 iter
+# 优化器配置（Batch Size=8时的学习率调整）
 optimizer = dict(
     type='AdamW',
-    lr=2e-4,  # 论文规范：2e-4
+    lr=4e-4,  # 从2e-4增加到4e-4（batch size从4增加到8，学习率线性缩放）
     betas=(0.9, 0.999),
     weight_decay=0.01)  # 论文规范：0.01
 optimizer_config = dict()

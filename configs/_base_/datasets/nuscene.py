@@ -47,7 +47,10 @@ test_pipeline = [
 ]
 data = dict(
     samples_per_gpu=4,
-    workers_per_gpu=2,
+    workers_per_gpu=20,  # 充分利用32核CPU（使用20个workers，约62.5%，留出核心给系统和GPU通信）
+    pin_memory=True,    # 启用pin_memory，加速CPU到GPU的数据传输
+    persistent_workers=True,  # 保持worker进程，避免重复创建的开销
+    prefetch_factor=4,  # PyTorch 2.0+: 每个worker预取4个batch，减少等待时间
     train=dict(
         type=dataset_type,
         data_root=data_root,

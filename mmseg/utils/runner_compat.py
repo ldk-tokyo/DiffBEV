@@ -8,6 +8,22 @@ import time
 import torch
 from collections import OrderedDict
 
+# FP16支持（优先使用新的torch.amp API）
+try:
+    from torch.amp import GradScaler, autocast
+    AMP_AVAILABLE = True
+    AMP_NEW_API = True
+except ImportError:
+    try:
+        from torch.cuda.amp import GradScaler, autocast
+        AMP_AVAILABLE = True
+        AMP_NEW_API = False
+    except ImportError:
+        AMP_AVAILABLE = False
+        AMP_NEW_API = False
+        autocast = None
+        GradScaler = None
+
 
 class MMCVRunnerCompat(object):
     """兼容MMCV 1.x Runner接口的包装类
@@ -77,6 +93,13 @@ class MMCVRunnerCompat(object):
         
         # 保存第一次迭代的输出用于loss结构检查
         self._first_iter_outputs = None
+        
+        # FP16支持（将在配置FP16时初始化）
+        self.fp16_enabled = False
+        self.fp16_scaler = None
+        
+        # 梯度裁剪配置（将在register_training_hooks时设置）
+        self.grad_clip = None
     
     def register_training_hooks(self,
                                 lr_config=None,
@@ -108,6 +131,12 @@ class MMCVRunnerCompat(object):
         self.log_config = log_config
         self.momentum_config = momentum_config
         self.timer_config = timer_config
+        
+        # 从optimizer_config中提取grad_clip配置
+        if optimizer_config is not None and isinstance(optimizer_config, dict):
+            self.grad_clip = optimizer_config.get('grad_clip', None)
+            if self.grad_clip is not None and self.logger is not None:
+                self.logger.info(f"✅ 梯度裁剪已启用: {self.grad_clip}")
         
         # TODO: 实现实际的hook注册逻辑
     
@@ -280,8 +309,16 @@ class MMCVRunnerCompat(object):
                             unwrapped_img_metas.append(meta)
                     unwrapped_batch['img_metas'] = unwrapped_img_metas
             
-            # 执行训练步骤
-            outputs = model.train_step(unwrapped_batch, self.optimizer)
+            # 执行训练步骤（FP16支持：使用autocast包装forward pass）
+            if self.fp16_enabled and AMP_AVAILABLE:
+                if AMP_NEW_API:
+                    with autocast('cuda'):
+                        outputs = model.train_step(unwrapped_batch, self.optimizer)
+                else:
+                    with autocast():
+                        outputs = model.train_step(unwrapped_batch, self.optimizer)
+            else:
+                outputs = model.train_step(unwrapped_batch, self.optimizer)
             
             # 执行hooks（如优化器step、学习率更新等）
             if not isinstance(outputs, dict):
@@ -319,30 +356,88 @@ class MMCVRunnerCompat(object):
                         )
                 
                 self.optimizer.zero_grad()
-                loss_tensor.backward()
                 
-                # 检查梯度是否存在
-                has_grad = False
-                for param in model.parameters():
-                    if param.grad is not None:
-                        if torch.isnan(param.grad).any():
-                            param_name = next((name for name, p in model.named_parameters() if p is param), "unknown")
-                            raise RuntimeError(
-                                f"❌ 训练终止: Iter {self.iter+1} 时检测到参数 '{param_name}' 的梯度为 NaN！"
-                            )
-                        has_grad = True
-                        break
-                
-                if not has_grad:
-                    warnings.warn(
-                        f"⚠️  Iter {self.iter+1}: 未检测到任何参数的梯度。"
-                        f"这可能表示loss未正确连接到模型参数。"
-                    )
-                
-                self.optimizer.step()
+                # FP16支持：使用GradScaler进行反向传播
+                if self.fp16_enabled and self.fp16_scaler is not None:
+                    self.fp16_scaler.scale(loss_tensor).backward()
+                    
+                    # FP16: 检查scaler状态，如果出现inf/NaN，跳过此次更新
+                    scaler_state = self.fp16_scaler.get_scale()
+                    if scaler_state == float('inf') or scaler_state != scaler_state:  # NaN检查
+                        self.logger.warning(
+                            f"⚠️  Iter {self.iter+1}: FP16 scaler检测到inf/NaN，跳过此次更新并降低loss_scale"
+                        )
+                        # scaler会自动处理，这里只记录警告
+                    
+                    # FP16: unscale梯度以检查NaN（在step之前）
+                    self.fp16_scaler.unscale_(self.optimizer)
+                    
+                    # 检查梯度是否存在和是否为NaN（在unscale之后）
+                    has_grad = False
+                    has_nan = False
+                    nan_param_name = None
+                    for name, param in model.named_parameters():
+                        if param.grad is not None:
+                            has_grad = True
+                            if torch.isnan(param.grad).any() or torch.isinf(param.grad).any():
+                                has_nan = True
+                                nan_param_name = name
+                                break
+                    
+                    if not has_grad:
+                        warnings.warn(
+                            f"⚠️  Iter {self.iter+1}: 未检测到任何参数的梯度。"
+                            f"这可能表示loss未正确连接到模型参数。"
+                        )
+                    
+                    if has_nan:
+                        # FP16: 如果检测到NaN，跳过此次更新
+                        self.fp16_scaler.update()  # 这会降低loss_scale
+                        self.logger.warning(
+                            f"⚠️  Iter {self.iter+1}: 检测到参数 '{nan_param_name}' 的梯度为 NaN/inf，"
+                            f"跳过此次更新。当前loss_scale: {self.fp16_scaler.get_scale():.2f}"
+                        )
+                        # 跳过optimizer.step()
+                    else:
+                        # 梯度裁剪（可选，但建议启用）
+                        if hasattr(self, 'grad_clip') and self.grad_clip is not None:
+                            torch.nn.utils.clip_grad_norm_(model.parameters(), **self.grad_clip)
+                        
+                        # FP16: 正常更新
+                        self.fp16_scaler.step(self.optimizer)
+                        self.fp16_scaler.update()
+                else:
+                    loss_tensor.backward()
+                    
+                    # 检查梯度是否存在
+                    has_grad = False
+                    for param in model.parameters():
+                        if param.grad is not None:
+                            if torch.isnan(param.grad).any():
+                                param_name = next((name for name, p in model.named_parameters() if p is param), "unknown")
+                                raise RuntimeError(
+                                    f"❌ 训练终止: Iter {self.iter+1} 时检测到参数 '{param_name}' 的梯度为 NaN！"
+                                )
+                            has_grad = True
+                            break
+                    
+                    if not has_grad:
+                        warnings.warn(
+                            f"⚠️  Iter {self.iter+1}: 未检测到任何参数的梯度。"
+                            f"这可能表示loss未正确连接到模型参数。"
+                        )
+                    
+                    # 梯度裁剪（FP32模式）
+                    if hasattr(self, 'grad_clip') and self.grad_clip is not None:
+                        torch.nn.utils.clip_grad_norm_(model.parameters(), **self.grad_clip)
+                    
+                    self.optimizer.step()
             
             # after_train_iter hook只接受runner参数，不传递额外的iter参数
             self._call_hook('after_train_iter')
+            
+            # 保存checkpoint（根据checkpoint_config）
+            self._save_checkpoint_if_needed()
             
             self.iter += 1
             self.inner_iter += 1
@@ -608,17 +703,73 @@ class MMCVRunnerCompat(object):
         Args:
             checkpoint: checkpoint路径
         """
-        warnings.warn("resume 方法使用兼容实现，某些功能可能不完整。")
-        # TODO: 实现checkpoint恢复逻辑
+        import os
+        import torch
+        
+        if not os.path.exists(checkpoint):
+            raise FileNotFoundError(f"Checkpoint文件不存在: {checkpoint}")
+        
+        if self.logger is not None:
+            self.logger.info(f"📂 从checkpoint恢复训练: {checkpoint}")
+        
+        # 加载checkpoint
+        checkpoint_data = torch.load(checkpoint, map_location='cpu')
+        
+        # 恢复迭代次数和epoch
+        if 'iter' in checkpoint_data:
+            self.iter = checkpoint_data['iter']
+        if 'epoch' in checkpoint_data:
+            self.epoch = checkpoint_data['epoch']
+        
+        # 恢复模型状态
+        if 'state_dict' in checkpoint_data:
+            if hasattr(self.model, 'module'):
+                self.model.module.load_state_dict(checkpoint_data['state_dict'])
+            else:
+                self.model.load_state_dict(checkpoint_data['state_dict'])
+        
+        # 恢复优化器状态
+        if 'optimizer' in checkpoint_data and self.optimizer is not None:
+            self.optimizer.load_state_dict(checkpoint_data['optimizer'])
+        
+        # 恢复FP16 scaler状态
+        if 'fp16_scaler' in checkpoint_data and self.fp16_enabled and self.fp16_scaler is not None:
+            self.fp16_scaler.load_state_dict(checkpoint_data['fp16_scaler'])
+        
+        if self.logger is not None:
+            self.logger.info(f"✅ 已恢复训练状态: iter={self.iter}, epoch={self.epoch}")
     
     def load_checkpoint(self, filename):
-        """加载checkpoint
+        """加载checkpoint（仅加载模型权重，不恢复训练状态）
         
         Args:
             filename: checkpoint文件路径
         """
-        warnings.warn("load_checkpoint 方法使用兼容实现，某些功能可能不完整。")
-        # TODO: 实现checkpoint加载逻辑
+        import os
+        import torch
+        
+        if not os.path.exists(filename):
+            raise FileNotFoundError(f"Checkpoint文件不存在: {filename}")
+        
+        if self.logger is not None:
+            self.logger.info(f"📂 加载checkpoint: {filename}")
+        
+        checkpoint_data = torch.load(filename, map_location='cpu')
+        
+        # 只加载模型权重
+        if 'state_dict' in checkpoint_data:
+            state_dict = checkpoint_data['state_dict']
+        else:
+            # 如果没有state_dict键，假设整个checkpoint就是state_dict
+            state_dict = checkpoint_data
+        
+        if hasattr(self.model, 'module'):
+            self.model.module.load_state_dict(state_dict, strict=False)
+        else:
+            self.model.load_state_dict(state_dict, strict=False)
+        
+        if self.logger is not None:
+            self.logger.info("✅ 模型权重已加载")
     
     def save_checkpoint(self,
                        out_dir,
@@ -633,8 +784,111 @@ class MMCVRunnerCompat(object):
             meta: 元数据
             create_symlink: 是否创建符号链接
         """
-        warnings.warn("save_checkpoint 方法使用兼容实现，某些功能可能不完整。")
-        # TODO: 实现checkpoint保存逻辑
+        import os
+        import torch
+        
+        os.makedirs(out_dir, exist_ok=True)
+        
+        # 准备checkpoint数据
+        checkpoint = {
+            'meta': meta or self.meta.copy(),
+            'iter': self.iter,
+            'epoch': self.epoch,
+        }
+        
+        # 保存模型状态
+        if hasattr(self.model, 'module'):
+            checkpoint['state_dict'] = self.model.module.state_dict()
+        else:
+            checkpoint['state_dict'] = self.model.state_dict()
+        
+        # 保存优化器状态
+        if self.optimizer is not None:
+            checkpoint['optimizer'] = self.optimizer.state_dict()
+        
+        # 保存FP16 scaler状态
+        if self.fp16_enabled and self.fp16_scaler is not None:
+            checkpoint['fp16_scaler'] = self.fp16_scaler.state_dict()
+        
+        # 生成文件名
+        filename = filename_tmpl.format(self.iter)
+        filepath = os.path.join(out_dir, filename)
+        
+        # 保存checkpoint
+        torch.save(checkpoint, filepath)
+        
+        if self.logger is not None:
+            self.logger.info(f"✅ Checkpoint已保存: {filepath}")
+        
+        # 创建latest.pth符号链接
+        if create_symlink:
+            latest_path = os.path.join(out_dir, 'latest.pth')
+            if os.path.exists(latest_path):
+                os.remove(latest_path)
+            os.symlink(filename, latest_path)
+        
+        return filepath
+    
+    def _save_checkpoint_if_needed(self):
+        """根据checkpoint_config检查是否需要保存checkpoint"""
+        if self.checkpoint_config is None:
+            return
+        
+        # 检查是否到了保存间隔
+        interval = self.checkpoint_config.get('interval', 5000)
+        by_epoch = self.checkpoint_config.get('by_epoch', False)
+        
+        should_save = False
+        if by_epoch:
+            # 基于epoch保存
+            if self.epoch > 0 and self.epoch % interval == 0:
+                should_save = True
+        else:
+            # 基于iteration保存
+            if self.iter > 0 and self.iter % interval == 0:
+                should_save = True
+        
+        if should_save:
+            # 获取max_keep_ckpts配置
+            max_keep_ckpts = self.checkpoint_config.get('max_keep_ckpts', -1)
+            
+            # 保存checkpoint
+            self.save_checkpoint(
+                out_dir=self.work_dir,
+                filename_tmpl='iter_{}.pth',
+                create_symlink=True,
+                meta=self.meta
+            )
+            
+            # 清理旧checkpoint（如果设置了max_keep_ckpts）
+            if max_keep_ckpts > 0:
+                self._cleanup_old_checkpoints(max_keep_ckpts)
+    
+    def _cleanup_old_checkpoints(self, max_keep):
+        """清理旧的checkpoint文件，只保留最近的max_keep个"""
+        import os
+        import glob
+        
+        # 查找所有checkpoint文件
+        pattern = os.path.join(self.work_dir, 'iter_*.pth')
+        checkpoint_files = glob.glob(pattern)
+        
+        # 排除latest.pth符号链接
+        checkpoint_files = [f for f in checkpoint_files if not f.endswith('latest.pth')]
+        
+        # 按修改时间排序
+        checkpoint_files.sort(key=os.path.getmtime, reverse=True)
+        
+        # 删除多余的checkpoint
+        if len(checkpoint_files) > max_keep:
+            for old_file in checkpoint_files[max_keep:]:
+                try:
+                    os.remove(old_file)
+                    if self.logger is not None:
+                        self.logger.info(f"🗑️  删除旧checkpoint: {os.path.basename(old_file)}")
+                except Exception as e:
+                    if self.logger is not None:
+                        self.logger.warning(f"⚠️  无法删除旧checkpoint {old_file}: {e}")
     
     @property
     def rank(self):
