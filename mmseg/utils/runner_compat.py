@@ -71,6 +71,12 @@ class MMCVRunnerCompat(object):
             self.by_epoch = False
         else:
             self.by_epoch = True
+        
+        # metrics_logger将在首次使用时初始化
+        self.metrics_logger = None
+        
+        # 保存第一次迭代的输出用于loss结构检查
+        self._first_iter_outputs = None
     
     def register_training_hooks(self,
                                 lr_config=None,
@@ -110,17 +116,45 @@ class MMCVRunnerCompat(object):
         
         Args:
             hook: Hook实例
-            priority: Hook优先级
+            priority: Hook优先级（可以是字符串或整数）
         """
-        if not hasattr(hook, 'priority'):
+        # 确定要使用的优先级值
+        if hasattr(hook, 'priority'):
+            # Hook已经有priority属性，确保它是整数类型
+            hook_priority = hook.priority
+            if isinstance(hook_priority, str):
+                hook.priority = self.hook_priority_map.get(hook_priority, 50)
+            elif not isinstance(hook_priority, int):
+                # 如果不是字符串也不是整数，尝试转换或使用默认值
+                try:
+                    hook.priority = int(hook_priority)
+                except (ValueError, TypeError):
+                    hook.priority = 50
+        else:
+            # Hook没有priority属性，使用传入的priority参数
             if isinstance(priority, str):
                 hook.priority = self.hook_priority_map.get(priority, 50)
             else:
-                hook.priority = priority
+                hook.priority = int(priority) if priority is not None else 50
         
         self.hooks.append(hook)
-        # 按优先级排序
-        self.hooks.sort(key=lambda x: x.priority, reverse=True)
+        # 按优先级排序（确保所有priority都是整数）
+        def get_priority_value(h):
+            """获取hook的优先级数值"""
+            if not hasattr(h, 'priority'):
+                return 50
+            p = h.priority
+            if isinstance(p, int):
+                return p
+            elif isinstance(p, str):
+                return self.hook_priority_map.get(p, 50)
+            else:
+                try:
+                    return int(p)
+                except (ValueError, TypeError):
+                    return 50
+        
+        self.hooks.sort(key=get_priority_value, reverse=True)
     
     def run(self, data_loaders, workflow, max_iters=None, **kwargs):
         """运行训练（兼容MMCV 1.x接口）
@@ -187,7 +221,7 @@ class MMCVRunnerCompat(object):
                 total=max_iters,
                 desc=f"Training",
                 unit="iter",
-                bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]'
+                bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]'
             )
         
         start_time = time.time()
@@ -253,18 +287,62 @@ class MMCVRunnerCompat(object):
             if not isinstance(outputs, dict):
                 raise TypeError('model.train_step() must return a dict')
             
+            # 在第一次迭代时（iter=0，实际是第1次迭代），保存outputs用于loss结构检查
+            if self.iter == 0:
+                self._first_iter_outputs = outputs.copy() if isinstance(outputs, dict) else {}
+            
             if 'log_vars' in outputs:
                 # log_buffer是OrderedDict，update()只接受一个参数
                 self.log_buffer.update(outputs['log_vars'])
             
-            # after_train_iter hook只接受runner参数，不传递额外的iter参数
-            self._call_hook('after_train_iter')
-            
             # 反向传播和优化器更新
             if 'loss' in outputs:
+                loss_tensor = outputs['loss']
+                
+                # 检查loss是否为nan或0（在反向传播前）
+                if isinstance(loss_tensor, torch.Tensor):
+                    if torch.isnan(loss_tensor).any():
+                        raise RuntimeError(
+                            f"❌ 训练终止: Iter {self.iter+1} 时检测到总loss为 NaN！"
+                        )
+                    if loss_tensor.item() == 0.0:
+                        raise RuntimeError(
+                            f"❌ 训练终止: Iter {self.iter+1} 时检测到总loss为 0！"
+                        )
+                    
+                    # 检查loss是否参与计算图（requires_grad）
+                    if not loss_tensor.requires_grad:
+                        raise RuntimeError(
+                            f"❌ 训练终止: Iter {self.iter+1} 时检测到loss未参与反向传播！"
+                            f"loss.requires_grad = {loss_tensor.requires_grad}。"
+                            f"请检查loss计算是否正确。"
+                        )
+                
                 self.optimizer.zero_grad()
-                outputs['loss'].backward()
+                loss_tensor.backward()
+                
+                # 检查梯度是否存在
+                has_grad = False
+                for param in model.parameters():
+                    if param.grad is not None:
+                        if torch.isnan(param.grad).any():
+                            param_name = next((name for name, p in model.named_parameters() if p is param), "unknown")
+                            raise RuntimeError(
+                                f"❌ 训练终止: Iter {self.iter+1} 时检测到参数 '{param_name}' 的梯度为 NaN！"
+                            )
+                        has_grad = True
+                        break
+                
+                if not has_grad:
+                    warnings.warn(
+                        f"⚠️  Iter {self.iter+1}: 未检测到任何参数的梯度。"
+                        f"这可能表示loss未正确连接到模型参数。"
+                    )
+                
                 self.optimizer.step()
+            
+            # after_train_iter hook只接受runner参数，不传递额外的iter参数
+            self._call_hook('after_train_iter')
             
             self.iter += 1
             self.inner_iter += 1
@@ -283,6 +361,9 @@ class MMCVRunnerCompat(object):
                             log_msg_parts.append(f"{key}={value}")
                 if hasattr(self.logger, 'info'):
                     self.logger.info(" | ".join(log_msg_parts))
+                
+                # 使用metrics_logger记录训练指标到TensorBoard和CSV
+                self._log_training_metrics_to_tb_and_csv(outputs)
             
             # 更新进度条
             if use_tqdm:
@@ -423,6 +504,103 @@ class MMCVRunnerCompat(object):
         if not hasattr(self, '_log_buffer'):
             self._log_buffer = OrderedDict()
         return self._log_buffer
+    
+    def _log_training_metrics_to_tb_and_csv(self, outputs):
+        """记录训练指标到TensorBoard和CSV
+        
+        Args:
+            outputs: train_step的输出，包含log_vars
+        """
+        try:
+            from mmseg.utils.metrics_logger import MetricsLogger
+            
+            # 初始化metrics_logger（如果还没有初始化）
+            if self.metrics_logger is None:
+                self.metrics_logger = MetricsLogger(
+                    work_dir=self.work_dir,
+                    csv_filename='metrics.csv',
+                    mode='train'
+                )
+            
+            if 'log_vars' not in outputs:
+                return
+            
+            log_vars = outputs['log_vars']
+            
+            # 提取训练损失指标
+            Lwce = None
+            Ldepth = None
+            Ldiff = None
+            loss_total = None
+            learning_rate = None
+            
+            # 尝试从log_vars中提取各种损失
+            # Lwce可能在loss_seg或其他键中
+            if 'loss_seg' in log_vars:
+                Lwce = log_vars['loss_seg']
+                if isinstance(Lwce, torch.Tensor):
+                    Lwce = Lwce.item()
+            elif 'loss_decode.loss_seg' in log_vars:
+                Lwce = log_vars['loss_decode.loss_seg']
+                if isinstance(Lwce, torch.Tensor):
+                    Lwce = Lwce.item()
+            
+            # Ldepth
+            if 'loss_depth' in log_vars:
+                Ldepth = log_vars['loss_depth']
+                if isinstance(Ldepth, torch.Tensor):
+                    Ldepth = Ldepth.item()
+            
+            # Ldiff
+            if 'loss_diff' in log_vars:
+                Ldiff = log_vars['loss_diff']
+                if isinstance(Ldiff, torch.Tensor):
+                    Ldiff = Ldiff.item()
+            elif 'loss_diffusion' in log_vars:
+                Ldiff = log_vars['loss_diffusion']
+                if isinstance(Ldiff, torch.Tensor):
+                    Ldiff = Ldiff.item()
+            
+            # 总损失
+            if 'loss' in log_vars:
+                loss_total = log_vars['loss']
+                if isinstance(loss_total, torch.Tensor):
+                    loss_total = loss_total.item()
+            
+            # 学习率
+            if hasattr(self, 'optimizer') and self.optimizer is not None:
+                # 尝试从优化器中获取学习率
+                if hasattr(self.optimizer, 'param_groups') and len(self.optimizer.param_groups) > 0:
+                    learning_rate = self.optimizer.param_groups[0].get('lr', None)
+            if learning_rate is None and 'lr' in log_vars:
+                learning_rate = log_vars['lr']
+                if isinstance(learning_rate, torch.Tensor):
+                    learning_rate = learning_rate.item()
+            if learning_rate is None and 'learning_rate' in log_vars:
+                learning_rate = log_vars['learning_rate']
+                if isinstance(learning_rate, torch.Tensor):
+                    learning_rate = learning_rate.item()
+            
+            # 记录到metrics_logger
+            self.metrics_logger.log_training_losses(
+                Lwce=Lwce,
+                Ldepth=Ldepth,
+                Ldiff=Ldiff,
+                loss_total=loss_total,
+                learning_rate=learning_rate,
+                step=self.iter,
+                prefix='train'
+            )
+            
+            # 刷新缓冲区
+            self.metrics_logger.flush()
+            
+        except Exception as e:
+            # 如果记录失败，记录警告但继续执行
+            if hasattr(self, 'logger'):
+                self.logger.warning(f'Failed to log training metrics to TensorBoard/CSV: {e}')
+            else:
+                print(f'Warning: Failed to log training metrics to TensorBoard/CSV: {e}')
     
     def resume(self, checkpoint):
         """恢复训练

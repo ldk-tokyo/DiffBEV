@@ -121,6 +121,31 @@ def train_segmentor(model,
                                    cfg.checkpoint_config, cfg.log_config,
                                    cfg.get('momentum_config', None))
 
+    # 注册Loss结构自检Hook
+    try:
+        from mmseg.core.hooks.loss_check_hook import LossCheckHook
+        
+        # 从配置中获取权重值
+        lambda_depth = 10.0
+        lambda_diff = 1.0
+        
+        if hasattr(cfg, 'model') and cfg.model is not None:
+            decode_head_cfg = cfg.model.get('decode_head', {})
+            if isinstance(decode_head_cfg, dict):
+                lambda_depth = decode_head_cfg.get('loss_depth_weight', lambda_depth)
+                lambda_diff = decode_head_cfg.get('loss_diff_weight', lambda_diff)
+        
+        loss_check_hook = LossCheckHook(
+            check_interval=10,
+            monitor_iters=100,
+            lambda_depth=lambda_depth,
+            lambda_diff=lambda_diff
+        )
+        runner.register_hook(loss_check_hook, priority='HIGHEST')
+        logger.info("✅ Loss结构自检Hook已注册")
+    except Exception as e:
+        logger.warning(f"⚠️  无法注册Loss结构自检Hook: {e}")
+
     # an ugly walkaround to make the .log and .log.json filenames the same
     runner.timestamp = timestamp
 

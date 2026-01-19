@@ -363,10 +363,16 @@ monitor_training() {
         # 提取迭代信息（尝试多种格式）
         LAST_ITER=""
         
-        # 方法1: 从tqdm进度条或实际训练输出中查找 (iter=123 或 Training iter=123)
-        LAST_ITER=$(grep -oE "iter=[0-9]+" "$LATEST_LOG" 2>/dev/null | grep -oE "[0-9]+" | tail -1 || echo "")
+        # 方法1: 从tqdm进度条格式中提取 (格式: Training loss=xxx lr=xxx ETA=xxx: 百分比|进度条| 当前/总数)
+        # 提取格式: "| 1409/200000 [" 或 "| 1409/200000 ["
+        LAST_ITER=$(grep -oE "\|[[:space:]]*[0-9]+/[0-9]+[[:space:]]*\[" "$LATEST_LOG" 2>/dev/null | grep -oE "[0-9]+/" | grep -oE "^[0-9]+" | tail -1 || echo "")
         
-        # 方法2: 从日志记录格式中查找 (iter: 123 或 iter 123)，但排除配置中的max_iters
+        # 方法2: 从tqdm进度条或实际训练输出中查找 (iter=123 或 Training iter=123)
+        if [ -z "$LAST_ITER" ] || [ "$LAST_ITER" = "$TOTAL_ITERS" ]; then
+            LAST_ITER=$(grep -oE "iter=[0-9]+" "$LATEST_LOG" 2>/dev/null | grep -oE "[0-9]+" | tail -1 || echo "")
+        fi
+        
+        # 方法3: 从日志记录格式中查找 (iter: 123 或 iter 123)，但排除配置中的max_iters
         if [ -z "$LAST_ITER" ] || [ "$LAST_ITER" = "$TOTAL_ITERS" ]; then
             # 尝试找到实际的训练迭代数（应该小于total_iters）
             ITER_CANDIDATES=$(grep -oE "(iter|iteration)[\s:=]+[0-9]+" "$LATEST_LOG" 2>/dev/null | grep -oE "[0-9]+" | grep -v "^${TOTAL_ITERS}$" | tail -1 || echo "")

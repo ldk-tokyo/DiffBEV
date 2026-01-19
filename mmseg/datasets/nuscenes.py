@@ -323,7 +323,11 @@ class NuscenesDataset(CustomDataset):
                 ious = tp.sum(0).float()/(tp.sum(0)+fp.sum(0)+fn.sum(0)).float()
                 print_log('\nper class results (iou):', logger)
                 for cid in range(len(self.CLASSES)):
-                    print_log('%.04f:%s tp:%d fp:%d fn:%d' % (ious[cid], self.CLASSES[cid], tp.sum(0)[cid],fp.sum(0)[cid],fn.sum(0)[cid]), logger)
+                    iou_value = ious[cid].item()
+                    class_name = self.CLASSES[cid]
+                    print_log('%.04f:%s tp:%d fp:%d fn:%d' % (iou_value, class_name, tp.sum(0)[cid],fp.sum(0)[cid],fn.sum(0)[cid]), logger)
+                    # 记录各类别IoU到eval_results，便于后续记录到CSV和TensorBoard
+                    eval_results[f'IoU.{class_name}'] = iou_value
                 miou_value = ious.mean().item()
                 print_log('%s: %.04f' % (met, miou_value), logger)
                 eval_results['mIoU'] = miou_value

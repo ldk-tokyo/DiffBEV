@@ -1,9 +1,10 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 from .collect_env import collect_env
 from .logger import get_root_logger
+from .metrics_logger import MetricsLogger
 from .compat import check_pytorch_version, check_mmcv_version, check_environment
 
-__all__ = ['get_root_logger', 'collect_env', 'check_pytorch_version', 'check_mmcv_version', 'check_environment', 'register_all_modules']
+__all__ = ['get_root_logger', 'collect_env', 'check_pytorch_version', 'check_mmcv_version', 'check_environment', 'register_all_modules', 'MetricsLogger']
 
 
 def register_all_modules(init_default_scope=True):

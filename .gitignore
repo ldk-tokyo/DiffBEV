@@ -1,0 +1,69 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# 训练输出和日志
+runs/
+*.log
+*.pth
+*.pth.tar
+*.ckpt
+metrics.csv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# CUDA安装文件（已删除）
+*.deb
+*.run
+
+# 临时文件
+*.tmp
+*.bak
+*.backup
+
+# 数据文件（如果很大）
+data/
+*.h5
+*.hdf5
+
+# 预训练权重（如果很大）
+pretrained/*.pth
+pretrained/*.pkl
+
+# 报告和可视化输出
+reports/
+*.png
+*.jpg
+*.pdf
+
+# 环境
+.env
+venv/
+env/
+.conda/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# 测试覆盖率
+.coverage
+htmlcov/
+
+# 子模块（mono-semantic-maps）
+mono-semantic-maps/

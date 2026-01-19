@@ -319,7 +319,82 @@ class EvalHook(_EvalHook):
                 logger=runner.logger
             )
         
+        # 使用metrics_logger记录指标到TensorBoard和CSV
+        self._log_metrics_to_tb_and_csv(runner, eval_results, dataset)
+        
         return eval_results
+    
+    def _log_metrics_to_tb_and_csv(self, runner, eval_results, dataset):
+        """将评估指标记录到TensorBoard和CSV
+        
+        Args:
+            runner: Runner对象
+            eval_results: 评估结果字典
+            dataset: 数据集对象
+        """
+        try:
+            from mmseg.utils.metrics_logger import MetricsLogger
+            
+            # 初始化metrics_logger（如果还没有初始化）
+            if not hasattr(runner, 'metrics_logger'):
+                runner.metrics_logger = MetricsLogger(
+                    work_dir=runner.work_dir,
+                    csv_filename='metrics.csv',
+                    mode='eval'
+                )
+            
+            # 获取当前步数
+            step = runner.iter if hasattr(runner, 'iter') else (runner.epoch if hasattr(runner, 'epoch') else 0)
+            
+            # 记录分割指标
+            if 'mIoU' in eval_results:
+                mIoU = eval_results['mIoU']
+                
+                # 提取各类别IoU
+                class_IoU = {}
+                class_names = getattr(dataset, 'CLASSES', [])
+                for key, value in eval_results.items():
+                    # 查找IoU.{class_name}格式的键
+                    if key.startswith('IoU.') and isinstance(value, (int, float)):
+                        class_name = key.replace('IoU.', '')
+                        class_IoU[class_name] = value
+                
+                # 记录到metrics_logger
+                runner.metrics_logger.log_segmentation_metrics(
+                    mIoU=mIoU,
+                    class_IoU=class_IoU if class_IoU else None,
+                    class_names=class_names,
+                    step=step,
+                    prefix='eval/segmentation'
+                )
+                
+                # 如果eval_results中有其他mIoU变体，也记录
+                for key in ['mIoUv1', 'mIoUv2']:
+                    if key in eval_results:
+                        runner.metrics_logger.log({key: eval_results[key]}, step=step, prefix='eval/segmentation')
+            
+            # 记录检测指标（如果存在）
+            detection_metrics = {}
+            for key in ['NDS', 'mAP', 'ATE', 'ASE', 'AOE', 'AVE', 'AAE']:
+                if key in eval_results:
+                    detection_metrics[key] = eval_results[key]
+            
+            if detection_metrics:
+                runner.metrics_logger.log_detection_metrics(
+                    step=step,
+                    prefix='eval/detection',
+                    **detection_metrics
+                )
+            
+            # 刷新缓冲区
+            runner.metrics_logger.flush()
+            
+        except Exception as e:
+            # 如果记录失败，记录警告但继续执行
+            if hasattr(runner, 'logger'):
+                runner.logger.warning(f'Failed to log metrics to TensorBoard/CSV: {e}')
+            else:
+                print(f'Warning: Failed to log metrics to TensorBoard/CSV: {e}')
 
 
 class DistEvalHook(_DistEvalHook):
@@ -436,4 +511,6 @@ class DistEvalHook(_DistEvalHook):
     
     def evaluate(self, runner, results):
         """评估结果并返回评估指标（与EvalHook相同的实现）"""
-        return EvalHook.evaluate(self, runner, results)
+        eval_results = EvalHook.evaluate(self, runner, results)
+        # 记录指标到TensorBoard和CSV（已在EvalHook.evaluate中处理）
+        return eval_results
