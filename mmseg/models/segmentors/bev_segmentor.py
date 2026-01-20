@@ -138,12 +138,13 @@ class BEVSegmentor(EncoderDecoder):
         
         return x
     
-    def forward_train(self, img, img_metas, gt_semantic_seg):
+    def forward_train(self, img, img_metas, gt_semantic_seg, gt_depth=None, gt_depth_mask=None, **kwargs):
         """Forward function for training."""
         x = self.extract_feat(img, img_metas)
         
         losses = dict()
-        loss_decode = self._decode_head_forward_train(x, img_metas, gt_semantic_seg)
+        loss_decode = self._decode_head_forward_train(
+            x, img_metas, gt_semantic_seg, gt_depth=gt_depth, gt_depth_mask=gt_depth_mask)
         losses.update(loss_decode)
         
         if self.with_auxiliary_head:

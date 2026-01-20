@@ -365,13 +365,14 @@ class EvalHook(_EvalHook):
                     class_IoU=class_IoU if class_IoU else None,
                     class_names=class_names,
                     step=step,
-                    prefix='eval/segmentation'
+                    prefix='eval/segmentation',
+                    mode='eval'
                 )
                 
                 # 如果eval_results中有其他mIoU变体，也记录
                 for key in ['mIoUv1', 'mIoUv2']:
                     if key in eval_results:
-                        runner.metrics_logger.log({key: eval_results[key]}, step=step, prefix='eval/segmentation')
+                        runner.metrics_logger.log({key: eval_results[key]}, step=step, prefix='eval/segmentation', mode='eval')
             
             # 记录检测指标（如果存在）
             detection_metrics = {}
@@ -383,6 +384,7 @@ class EvalHook(_EvalHook):
                 runner.metrics_logger.log_detection_metrics(
                     step=step,
                     prefix='eval/detection',
+                    mode='eval',
                     **detection_metrics
                 )
             

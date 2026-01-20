@@ -239,6 +239,17 @@ class DefaultFormatBundle(object):
                 to_tensor(results['gt_semantic_seg'][None,
                                                      ...].astype(np.int64)),
                 stack=True)
+        if 'gt_depth' in results:
+            # depth is float map, keep float32
+            results['gt_depth'] = DC(
+                to_tensor(results['gt_depth'][None,
+                                             ...].astype(np.float32)),
+                stack=True)
+        if 'gt_depth_mask' in results:
+            results['gt_depth_mask'] = DC(
+                to_tensor(results['gt_depth_mask'][None,
+                                                  ...].astype(np.uint8)),
+                stack=True)
         return results
 
     def __repr__(self):

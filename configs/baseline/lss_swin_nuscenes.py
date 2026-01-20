@@ -4,7 +4,7 @@
 
 _base_ = [
     '../_base_/datasets/nuscene.py',
-    '../_base_/default_runtime.py',
+    '../_base_/default_runtime_bf16.py',  # 启用BF16混合精度训练（数值稳定性更好）
     '../_base_/schedules/schedule_200k_nuscenes.py'  # 使用符合规范的训练计划
 ]
 
@@ -113,18 +113,21 @@ data = dict(
         data_root="/media/ldk950413/data0/nuScenes",  # 数据集路径（统一配置，注意大小写）
         img_dir='img_dir/train',
         ann_dir='ann_bev_dir/train',
+        reduce_zero_label=False,
         pipeline=train_pipeline),
     val=dict(
         type='NuscenesDataset',
         data_root="/media/ldk950413/data0/nuScenes",  # 数据集路径（统一配置，注意大小写）
         img_dir='img_dir/val',
         ann_dir='ann_bev_dir/val',
+        reduce_zero_label=False,
         pipeline=test_pipeline),
     test=dict(
         type='NuscenesDataset',
         data_root="/media/ldk950413/data0/nuScenes",  # 数据集路径（统一配置，注意大小写）
         img_dir='img_dir/val',
         ann_dir='ann_bev_dir/val',
+        reduce_zero_label=False,
         pipeline=test_pipeline))
 
 # 优化器和学习率配置已在 _base_ 的 schedule_200k_nuscenes.py 中定义

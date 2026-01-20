@@ -11,8 +11,12 @@ CYAN='\033[0;36m'
 WHITE='\033[1;37m'
 NC='\033[0m' # No Color
 
-# 刷新间隔（秒）
-REFRESH_INTERVAL=${1:-2}
+# 刷新间隔（秒）与工作目录
+# 用法：
+#   bash 实时监控训练.sh <刷新间隔>
+#   bash 实时监控训练.sh <work_dir> <刷新间隔>
+#   bash 实时监控训练.sh <刷新间隔> <work_dir>
+REFRESH_INTERVAL=2
 
 # 检查是否应该使用watch（如果通过watch调用，不要使用内置循环）
 USE_BUILTIN_LOOP=true
@@ -23,7 +27,17 @@ fi
 # 获取脚本所在目录和项目根目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-WORK_DIR="$PROJECT_DIR/runs/baseline"
+# 解析参数
+if [ -n "${1:-}" ] && [ -d "$1" ]; then
+    WORK_DIR="$1"
+    REFRESH_INTERVAL="${2:-2}"
+elif [ -n "${2:-}" ] && [ -d "$2" ]; then
+    REFRESH_INTERVAL="${1:-2}"
+    WORK_DIR="$2"
+else
+    REFRESH_INTERVAL="${1:-2}"
+    WORK_DIR="$PROJECT_DIR/runs/baseline"
+fi
 
 # 监控函数
 monitor_training() {
@@ -297,7 +311,6 @@ monitor_training() {
     echo ""
     
     # 3. 训练进度和日志
-    WORK_DIR="/media/ldk950413/data0/DiffBEV/runs/baseline"
     
     # 方法1: 优先按创建时间找最新日志（每次训练启动都会创建新日志文件，格式：YYYYMMDD_HHMMSS.log）
     # 这是最准确的方法，因为每次训练启动都会创建新的日志文件
@@ -361,12 +374,20 @@ monitor_training() {
         # 检查是否有多个训练进程（可能是父子进程）
         PROC_COUNT=$(ps aux | grep -iE "[pP]ython.*train\.py|train\.py|tools/train" | grep -v grep | grep -v "grep" | wc -l)
         
-        # 提取迭代信息（尝试多种格式）
-        LAST_ITER=""
+    # 总迭代数（从配置或日志中获取）
+    TOTAL_ITERS="200000"  # 默认值，从配置文件中获取
+    if grep -q "total_iters\|max_iters" "$LATEST_LOG" 2>/dev/null; then
+        TOTAL_ITERS_TMP=$(grep -oE "(total_iters|max_iters)[\s:=]+[0-9]+" "$LATEST_LOG" 2>/dev/null | grep -oE "[0-9]+" | head -1)
+        if [ -n "$TOTAL_ITERS_TMP" ]; then
+            TOTAL_ITERS="$TOTAL_ITERS_TMP"
+        fi
+    fi
+
+    # 提取迭代信息（尝试多种格式）
+    LAST_ITER=""
         
-        # 方法1: 从tqdm进度条格式中提取 (格式: Training loss=xxx lr=xxx ETA=xxx: 百分比|进度条| 当前/总数)
-        # 提取格式: "| 1409/200000 [" 或 "| 1409/200000 ["
-        LAST_ITER=$(grep -oE "\|[[:space:]]*[0-9]+/[0-9]+[[:space:]]*\[" "$LATEST_LOG" 2>/dev/null | grep -oE "[0-9]+/" | grep -oE "^[0-9]+" | tail -1 || echo "")
+    # 方法1: 从tqdm进度条格式中提取 (格式: Training:  1%|...| 1409/200000 [..])
+    LAST_ITER=$(grep -oE "[0-9]+/[0-9]+" "$LATEST_LOG" 2>/dev/null | tail -1 | cut -d'/' -f1 || echo "")
         
         # 方法2: 从tqdm进度条或实际训练输出中查找 (iter=123 或 Training iter=123)
         if [ -z "$LAST_ITER" ] || [ "$LAST_ITER" = "$TOTAL_ITERS" ]; then
@@ -398,14 +419,6 @@ monitor_training() {
             LAST_ITER="0"
         fi
         
-        # 总迭代数（从配置或日志中获取）
-        TOTAL_ITERS="200000"  # 默认值，从配置文件中获取
-        if grep -q "total_iters\|max_iters" "$LATEST_LOG" 2>/dev/null; then
-            TOTAL_ITERS_TMP=$(grep -oE "(total_iters|max_iters)[\s:=]+[0-9]+" "$LATEST_LOG" 2>/dev/null | grep -oE "[0-9]+" | head -1)
-            if [ -n "$TOTAL_ITERS_TMP" ]; then
-                TOTAL_ITERS="$TOTAL_ITERS_TMP"
-            fi
-        fi
         
         # 提取损失值（尝试多种格式）
         # 方法1: 从tqdm进度条格式提取 (Training loss=0.1234 ETA=1.5h)

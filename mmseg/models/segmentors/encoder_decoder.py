@@ -82,13 +82,18 @@ class EncoderDecoder(BaseSegmentor):
             align_corners=self.align_corners)
         return out
 
-    def _decode_head_forward_train(self, x, img_metas, gt_semantic_seg):
+    def _decode_head_forward_train(self, x, img_metas, gt_semantic_seg, **kwargs):
         """Run forward function and calculate loss for decode head in
         training."""
         losses = dict()
-        loss_decode = self.decode_head.forward_train(x, img_metas,
-                                                     gt_semantic_seg,
-                                                     self.train_cfg)
+        # Pass gt_depth if decode_head supports it
+        try:
+            loss_decode = self.decode_head.forward_train(
+                x, img_metas, gt_semantic_seg, self.train_cfg, **kwargs)
+        except TypeError:
+            # Fallback for heads that do not accept extra kwargs
+            loss_decode = self.decode_head.forward_train(
+                x, img_metas, gt_semantic_seg, self.train_cfg)
 
         losses.update(add_prefix(loss_decode, 'decode'))
         return losses

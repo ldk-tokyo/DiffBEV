@@ -4,7 +4,7 @@
 
 _base_ = [
     '../_base_/datasets/nuscene.py',
-    '../_base_/default_runtime.py',
+    '../_base_/default_runtime_bf16.py',  # 启用BF16混合精度训练（数值稳定性更好）
     '../_base_/schedules/schedule_200k_nuscenes.py'  # 使用符合规范的训练计划
 ]
 

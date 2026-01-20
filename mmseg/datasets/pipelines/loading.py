@@ -120,7 +120,11 @@ class LoadAnnotations(object):
                 with_calib=False,
                 with_calib_kittiraw=False,
                 with_calib_kittiodometry=False,
-                with_calib_kittiobject=False):
+                with_calib_kittiobject=False,
+                with_depth=False,
+                depth_dir=None,
+                depth_scale=256.0,
+                depth_suffix='.png'):
         self.reduce_zero_label = reduce_zero_label
         self.file_client_args = file_client_args.copy()
         self.file_client = None
@@ -129,6 +133,10 @@ class LoadAnnotations(object):
         self.with_calib_kittiraw = with_calib_kittiraw
         self.with_calib_kittiodometry = with_calib_kittiodometry
         self.with_calib_kittiobject = with_calib_kittiobject
+        self.with_depth = with_depth
+        self.depth_dir = depth_dir
+        self.depth_scale = depth_scale
+        self.depth_suffix = depth_suffix
         # enter your path of calibration matrix of each dataset
         # nuScenes数据集路径统一配置为: /media/ldk950413/data0/nuScenes（注意大小写）
         if self.with_calib:
@@ -214,6 +222,50 @@ class LoadAnnotations(object):
             gt_semantic_seg[gt_semantic_seg == 254] = 255
         results['gt_semantic_seg'] = gt_semantic_seg
         results['seg_fields'].append('gt_semantic_seg')
+
+        # Optional depth supervision
+        if self.with_depth:
+            # Resolve depth directory
+            seg_prefix = results.get('seg_prefix', None)
+            depth_dir = self.depth_dir
+            if depth_dir is None and seg_prefix is not None:
+                # ann_bev_dir/train -> ann_bev_dir/train_depth
+                depth_dir = osp.join(osp.dirname(seg_prefix),
+                                     osp.basename(seg_prefix) + '_depth')
+            elif depth_dir is not None and seg_prefix is not None and not osp.isabs(depth_dir):
+                # If depth_dir starts with ann_bev_dir, use data_root
+                if depth_dir.startswith('ann_bev_dir'):
+                    data_root = osp.dirname(osp.dirname(seg_prefix))
+                    depth_dir = osp.join(data_root, depth_dir)
+                else:
+                    depth_dir = osp.join(osp.dirname(seg_prefix), depth_dir)
+
+            if depth_dir is not None:
+                base_name = osp.splitext(osp.basename(filename))[0]
+                depth_file = osp.join(depth_dir, base_name + self.depth_suffix)
+                if osp.exists(depth_file):
+                    depth = None
+                    depth_mask = None
+                    if depth_file.endswith('.npz'):
+                        npz = np.load(depth_file)
+                        depth = npz.get('depth', None)
+                        depth_mask = npz.get('mask', None)
+                    elif depth_file.endswith('.npy'):
+                        depth = np.load(depth_file)
+                    else:
+                        depth = cv2.imread(depth_file, cv2.IMREAD_UNCHANGED)
+
+                    if depth is not None:
+                        depth = depth.astype(np.float32)
+                        # Normalize if depth values are scaled
+                        if self.depth_scale is not None and depth.max() > 1.0:
+                            depth = depth / float(self.depth_scale)
+                        results['gt_depth'] = depth
+                        results['seg_fields'].append('gt_depth')
+                    if depth_mask is not None:
+                        depth_mask = depth_mask.astype(np.uint8)
+                        results['gt_depth_mask'] = depth_mask
+                        results['seg_fields'].append('gt_depth_mask')
         if self.with_calib:
             token = osp.basename(filename).split('.')[0]
             

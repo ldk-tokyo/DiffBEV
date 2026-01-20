@@ -31,6 +31,7 @@ from .setr_mla_head import SETRMLAHead
 from .setr_up_head import SETRUPHead
 from .uper_head import UPerHead
 from .pyramid_head import PyramidHead
+from .diffusion_head import DiffusionHead
 from .pyramid_head_kitti import PyramidHeadKitti
 
 __all__ = [
@@ -39,7 +40,7 @@ __all__ = [
     'EncHead', 'DepthwiseSeparableFCNHead', 'FPNHead', 'EMAHead', 'DNLHead',
     'APCHead', 'DMHead', 'LRASPPHead', 'SETRUPHead','SETRMLAHead', 
     'DPTHead', 'SETRMLAHead', 'SegformerHead', 'ISAHead','PyramidHead',
-    'PyramidHeadKitti',
+    'PyramidHeadKitti', 'DiffusionHead',
 ]
 # 如果PointHead成功导入，添加到__all__
 if PointHead is not None:

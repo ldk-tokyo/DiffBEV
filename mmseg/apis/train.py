@@ -5,6 +5,7 @@ import warnings
 
 import numpy as np
 import torch
+import torch.nn as nn
 # 尝试从 mmcv.parallel 导入（mmcv 1.x），如果失败则尝试其他位置
 try:
     from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
@@ -121,8 +122,26 @@ def train_segmentor(model,
                                    cfg.checkpoint_config, cfg.log_config,
                                    cfg.get('momentum_config', None))
     
-    # 注册FP16支持（如果配置了FP16）
-    if cfg.get('fp16') is not None:
+    # 注册FP16/BF16支持（如果配置了）
+    # 注意：FP16和BF16不能同时启用，优先使用BF16
+    if cfg.get('bf16') is not None:
+        # BF16支持
+        try:
+            if not torch.cuda.is_available():
+                logger.warning("⚠️  BF16需要CUDA支持，但CUDA不可用，将使用FP32训练")
+            elif not torch.cuda.is_bf16_supported():
+                logger.warning("⚠️  当前GPU不支持BF16，将使用FP32训练")
+            else:
+                if hasattr(runner, 'bf16_enabled'):
+                    runner.bf16_enabled = True
+                    runner.amp_dtype = 'bfloat16'
+                    logger.info("✅ BF16混合精度训练已启用（数值稳定性更好，不需要loss scaling）")
+                else:
+                    logger.warning("⚠️  Runner不支持BF16，将使用FP32训练")
+        except Exception as e:
+            logger.warning(f"⚠️  BF16配置存在但无法启用: {e}")
+            logger.warning("将使用FP32训练")
+    elif cfg.get('fp16') is not None:
         try:
             # 尝试使用新的torch.amp.GradScaler，如果不可用则使用torch.cuda.amp.GradScaler
             try:
@@ -133,6 +152,7 @@ def train_segmentor(model,
                 # 初始化FP16 scaler（使用新的API）
                 if hasattr(runner, 'fp16_enabled'):
                     runner.fp16_enabled = True
+                    runner.amp_dtype = 'float16'
                     runner.fp16_scaler = GradScaler('cuda', init_scale=loss_scale)
                     logger.info(f"✅ FP16混合精度训练已启用 (loss_scale={loss_scale})")
             except ImportError:
@@ -144,6 +164,7 @@ def train_segmentor(model,
                 # 初始化FP16 scaler（使用旧的API）
                 if hasattr(runner, 'fp16_enabled'):
                     runner.fp16_enabled = True
+                    runner.amp_dtype = 'float16'
                     runner.fp16_scaler = GradScaler(init_scale=loss_scale)
                     logger.info(f"✅ FP16混合精度训练已启用 (loss_scale={loss_scale}, 使用旧API)")
             else:
@@ -176,6 +197,19 @@ def train_segmentor(model,
         logger.info("✅ Loss结构自检Hook已注册")
     except Exception as e:
         logger.warning(f"⚠️  无法注册Loss结构自检Hook: {e}")
+
+    # 注册训练指标记录Hook（仅在mmcv Runner时使用）
+    try:
+        from mmseg.core.hooks.metrics_logger_hook import MetricsLoggerHook
+        from mmseg.utils.runner_compat import MMCVRunnerCompat
+        if not isinstance(runner, MMCVRunnerCompat):
+            log_interval = 50
+            if cfg.get('log_config') is not None:
+                log_interval = cfg.log_config.get('interval', log_interval)
+            runner.register_hook(MetricsLoggerHook(interval=log_interval), priority='LOW')
+            logger.info("✅ MetricsLoggerHook已注册（训练指标写入CSV）")
+    except Exception as e:
+        logger.warning(f"⚠️  无法注册MetricsLoggerHook: {e}")
 
     # an ugly walkaround to make the .log and .log.json filenames the same
     runner.timestamp = timestamp

@@ -1,14 +1,13 @@
-# Baseline配置 - 优化版本：平衡显存利用率和训练速度
-# 优化策略：
-# 1. Batch Size=6（平衡显存和速度）
-# 2. BF16混合精度训练（充分利用Tensor Cores，数值稳定性更好）
-# 3. 增加数据加载workers和prefetch
-# 4. 预期显存使用: 15-18GB（利用率45-55%）
-# 5. 预期训练速度: 比batch size=8快，比batch size=4稍慢但吞吐量更高
+# Baseline配置 - BF16版本
+# 优化：
+# 1. 使用BF16混合精度训练（数值稳定性更好，不需要loss scaling）
+# 2. Batch Size=6（平衡显存和速度）
+# 3. 预期显存使用: 15-18GB（利用率45-55%）
+# 4. 预期训练速度: 与FP16相当，但数值稳定性更好
 
 _base_ = [
     '../_base_/datasets/nuscene_optimized.py',  # 使用优化版本的数据配置
-    '../_base_/default_runtime_bf16.py',  # 启用BF16混合精度训练（数值稳定性更好，不需要loss scaling）
+    '../_base_/default_runtime_bf16.py',  # 启用BF16
     '../_base_/schedules/schedule_200k_nuscenes_bs6.py'  # 使用batch size=6的学习率配置
 ]
 

@@ -6,6 +6,7 @@
 import os
 import os.path as osp
 import csv
+import shutil
 from collections import OrderedDict
 from typing import Dict, Optional, Union
 import warnings
@@ -68,7 +69,8 @@ class MetricsLogger:
     def log(self,
             metrics: Dict[str, Union[float, int]],
             step: Optional[int] = None,
-            prefix: str = ''):
+            prefix: str = '',
+            mode: Optional[str] = None):
         """
         记录指标到TensorBoard和CSV
         
@@ -81,8 +83,10 @@ class MetricsLogger:
             # 如果没有指定step，尝试从metrics中获取
             step = metrics.get('iter', metrics.get('epoch', 0))
         
-        # 准备记录的数据
+        # 准备记录的数据（规范化基础字段）
         record_dict = OrderedDict()
+        record_dict['mode'] = mode if mode is not None else self.mode
+        record_dict['phase'] = prefix or ''
         record_dict['step'] = step
         if 'iter' in metrics:
             record_dict['iter'] = metrics['iter']
@@ -120,17 +124,47 @@ class MetricsLogger:
         Args:
             record_dict: 要记录的字典
         """
+        # 写入CSV
+        file_exists = osp.exists(self.csv_path)
+
+        # 如果文件已存在且尚未记录表头，先读取已有表头
+        if file_exists and not self.csv_header_written:
+            try:
+                with open(self.csv_path, 'r', encoding='utf-8') as f:
+                    reader = csv.reader(f)
+                    existing_header = next(reader, None)
+                    if existing_header:
+                        self.csv_columns = existing_header
+                        self.csv_header_written = True
+            except Exception:
+                # 读取失败则忽略，后续会重新写入表头
+                pass
+
         # 确定CSV列
         if self.csv_columns is None:
             self.csv_columns = list(record_dict.keys())
-        
-        # 确保所有列都存在
+
+        # 确保所有列都存在（记录新列是否出现）
+        columns_changed = False
         for key in record_dict.keys():
             if key not in self.csv_columns:
                 self.csv_columns.append(key)
-        
-        # 写入CSV
-        file_exists = osp.exists(self.csv_path)
+                columns_changed = True
+
+        # 规范列顺序：固定基础列在前，其余按字母排序
+        preferred = ['mode', 'phase', 'step', 'iter', 'epoch']
+        if any(col in self.csv_columns for col in preferred):
+            fixed = [col for col in preferred if col in self.csv_columns]
+            rest = [col for col in self.csv_columns if col not in fixed]
+            rest_sorted = sorted(rest)
+            new_order = fixed + rest_sorted
+            if new_order != self.csv_columns:
+                self.csv_columns = new_order
+                columns_changed = True
+
+        # 如果新增了列且文件已存在，需要重写表头以保证可读性
+        if file_exists and self.csv_header_written and columns_changed:
+            self._rewrite_csv_with_new_header()
         with open(self.csv_path, 'a', newline='', encoding='utf-8') as f:
             writer = csv.DictWriter(f, fieldnames=self.csv_columns, 
                                   extrasaction='ignore')
@@ -143,13 +177,46 @@ class MetricsLogger:
             # 确保所有列都有值
             row = {col: record_dict.get(col, '') for col in self.csv_columns}
             writer.writerow(row)
+            f.flush()  # 立即刷新，确保数据写入磁盘
+            os.fsync(f.fileno())  # 强制同步到磁盘，确保文件修改时间更新
+
+    def _rewrite_csv_with_new_header(self):
+        """当新增列时，重写CSV文件以更新表头。"""
+        if not osp.exists(self.csv_path):
+            return
+
+        temp_path = self.csv_path + '.tmp'
+        try:
+            # 读取现有数据
+            with open(self.csv_path, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+
+            # 写入新表头和旧数据
+            with open(temp_path, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(f, fieldnames=self.csv_columns, extrasaction='ignore')
+                writer.writeheader()
+                for row in rows:
+                    # 补齐缺失列
+                    full_row = {col: row.get(col, '') for col in self.csv_columns}
+                    writer.writerow(full_row)
+
+            shutil.move(temp_path, self.csv_path)
+        except Exception:
+            # 如果重写失败，删除临时文件并继续使用原文件
+            if osp.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
     
     def log_segmentation_metrics(self,
                                  mIoU: float,
                                  class_IoU: Optional[Dict[str, float]] = None,
                                  class_names: Optional[list] = None,
                                  step: Optional[int] = None,
-                                 prefix: str = ''):
+                                 prefix: str = '',
+                                 mode: Optional[str] = None):
         """
         记录分割指标
         
@@ -170,7 +237,7 @@ class MetricsLogger:
             # 如果提供了类别名但没有IoU值，创建占位符（会在后续更新中填充）
             pass
         
-        self.log(metrics, step=step, prefix=prefix or 'eval/segmentation')
+        self.log(metrics, step=step, prefix=prefix or 'eval/segmentation', mode=mode)
     
     def log_detection_metrics(self,
                               NDS: Optional[float] = None,
@@ -181,7 +248,8 @@ class MetricsLogger:
                               AVE: Optional[float] = None,
                               AAE: Optional[float] = None,
                               step: Optional[int] = None,
-                              prefix: str = ''):
+                              prefix: str = '',
+                              mode: Optional[str] = None):
         """
         记录检测指标
         
@@ -213,7 +281,7 @@ class MetricsLogger:
             metrics['AAE'] = AAE
         
         if metrics:
-            self.log(metrics, step=step, prefix=prefix or 'eval/detection')
+            self.log(metrics, step=step, prefix=prefix or 'eval/detection', mode=mode)
     
     def log_training_losses(self,
                            Lwce: Optional[float] = None,
@@ -222,7 +290,8 @@ class MetricsLogger:
                            loss_total: Optional[float] = None,
                            learning_rate: Optional[float] = None,
                            step: Optional[int] = None,
-                           prefix: str = ''):
+                           prefix: str = '',
+                           mode: Optional[str] = None):
         """
         记录训练损失
         
@@ -248,7 +317,7 @@ class MetricsLogger:
             metrics['lr'] = learning_rate
         
         if metrics:
-            self.log(metrics, step=step, prefix=prefix or 'train')
+            self.log(metrics, step=step, prefix=prefix or 'train', mode=mode)
     
     def flush(self):
         """刷新缓冲区"""

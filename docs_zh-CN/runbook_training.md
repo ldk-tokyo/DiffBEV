@@ -67,7 +67,17 @@ ls -d \
 
 **成功判据**: 所有4个目录都存在
 
-### Step 1.3: 检查训练脚本是否存在
+### Step 1.3: 检查深度GT目录结构（DiffBEV需要）
+
+```bash
+ls -d \
+    /media/ldk950413/data0/nuScenes/ann_bev_dir/train_depth \
+    /media/ldk950413/data0/nuScenes/ann_bev_dir/val_depth
+```
+
+**成功判据**: 两个目录都存在（如果不存在，按阶段4.0生成）
+
+### Step 1.4: 检查训练脚本是否存在
 
 ```bash
 test -f /media/ldk950413/data0/DiffBEV/scripts/training/run_baseline_nuscenes.sh && \
@@ -77,7 +87,7 @@ echo "Scripts exist"
 
 **成功判据**: 输出 "Scripts exist"
 
-### Step 1.4: 检查配置文件是否存在
+### Step 1.5: 检查配置文件是否存在
 
 ```bash
 test -f /media/ldk950413/data0/DiffBEV/configs/baseline/lss_swin_nuscenes.py && \
@@ -87,7 +97,7 @@ echo "Configs exist"
 
 **成功判据**: 输出 "Configs exist"
 
-### Step 1.5: 检查GPU可用性
+### Step 1.6: 检查GPU可用性
 
 ```bash
 nvidia-smi --query-gpu=index,name,memory.total,memory.free --format=csv,noheader,nounits | head -1
@@ -224,6 +234,36 @@ tail -5 /media/ldk950413/data0/DiffBEV/runs/baseline/metrics.csv
 
 ## 阶段4：DiffBEV正式训练
 
+### Step 4.0: 生成离线深度GT（DiffBEV必需）
+
+```bash
+python /media/ldk950413/data0/DiffBEV/tools/data/prepare_nuscenes_depth_gt.py \
+  --nuscenes-root /media/ldk950413/data0/nuScenes \
+  --version v1.0-trainval \
+  --output-dir /media/ldk950413/data0/nuScenes/ann_bev_dir \
+  --split train \
+  --img-dir /media/ldk950413/data0/nuScenes/img_dir/train \
+  --cameras CAM_FRONT \
+  --height 600 --width 800 \
+  --min-depth 1 --max-depth 50
+```
+
+```bash
+python /media/ldk950413/data0/DiffBEV/tools/data/prepare_nuscenes_depth_gt.py \
+  --nuscenes-root /media/ldk950413/data0/nuScenes \
+  --version v1.0-trainval \
+  --output-dir /media/ldk950413/data0/nuScenes/ann_bev_dir \
+  --split val \
+  --img-dir /media/ldk950413/data0/nuScenes/img_dir/val \
+  --cameras CAM_FRONT \
+  --height 600 --width 800 \
+  --min-depth 1 --max-depth 50
+```
+
+**成功判据**: 
+- 生成目录 `/media/ldk950413/data0/nuScenes/ann_bev_dir/train_depth` 和 `val_depth`
+- 目录内存在 `.npz` 文件（每个样本一个）
+
 ### Step 4.1: 确保输出目录存在
 
 ```bash
@@ -231,6 +271,18 @@ mkdir -p /media/ldk950413/data0/DiffBEV/runs/diffbev_default
 ```
 
 **成功判据**: 目录创建成功，无错误
+
+### Step 4.1.1: 深度GT自检（确保dataloader输出depth字段）
+
+```bash
+python /media/ldk950413/data0/DiffBEV/tools/debug/check_depth_gt.py \
+  --config /media/ldk950413/data0/DiffBEV/configs/diffbev/diffbev_lss_swin_nuscenes.py
+```
+
+**成功判据**: 
+- 输出包含 `gt_depth` 和 `gt_depth_mask`
+- `gt_depth` 形状为 `[1, 1, H, W]`（H/W与训练输入一致）
+- `gt_depth_mask valid_ratio` > 0
 
 ### Step 4.2: 运行DiffBEV正式训练
 
@@ -268,7 +320,7 @@ test -f /media/ldk950413/data0/DiffBEV/runs/diffbev_default/metrics.csv && \
 tail -5 /media/ldk950413/data0/DiffBEV/runs/diffbev_default/metrics.csv
 ```
 
-**成功判据**: 文件存在且显示最后5行数据（包含step、mIoU等指标）
+**成功判据**: 文件存在且显示最后5行数据（包含`mode/phase/step`以及`loss/Lwce/Ldepth/Ldiff/lr/mIoU`等）
 
 ---
 
@@ -304,7 +356,7 @@ python tools/plot_metrics.py \
 ls -lh /media/ldk950413/data0/DiffBEV/reports/comparison/plots/*.png
 ```
 
-**成功判据**: 显示多个PNG文件（mIoU_comparison.png, NDS_comparison.png, mAP_comparison.png, Lwce_comparison.png, Ldepth_comparison.png, Ldiff_comparison.png, lr_comparison.png）
+**成功判据**: 显示多个PNG文件（至少包含mIoU_comparison.png, Lwce_comparison.png, Ldepth_comparison.png, Ldiff_comparison.png, lr_comparison.png）
 
 ### Step 5.4: 检查生成的summary.md
 
@@ -422,8 +474,10 @@ tail -20 /media/ldk950413/data0/DiffBEV/runs/baseline/train_*.log | grep -i "met
 **说明**: 检查训练日志中是否有指标记录相关的错误信息
 
 **解决方案**: 
-- 确认训练至少完成一次评估（20k iterations）
+- 确认训练至少完成一次评估（20k iterations）以写入mIoU
+- 训练loss应每`log_config.interval`写入CSV；检查`mmseg/core/hooks/metrics_logger_hook.py`
 - 检查 `mmseg/utils/metrics_logger.py` 是否正确集成
+- 如果CSV列缺失，重新启动训练以生成新表头
 
 ---
 
@@ -442,6 +496,40 @@ python -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.get_
 - 使用 `--device cpu` 进行CPU推理测试
 
 ---
+
+### 问题6: mIoU长期停留在0.046左右（建议使用诊断工具）
+
+**定位命令（只做统计，不保存图）**:
+```bash
+python /media/ldk950413/data0/DiffBEV/tools/debug/diagnose_segmentation.py \
+  --config /media/ldk950413/data0/DiffBEV/configs/diffbev/diffbev_lss_swin_nuscenes.py \
+  --checkpoint /media/ldk950413/data0/DiffBEV/runs/diffbev_default/latest.pth \
+  --num-samples 50 \
+  --vis-num 0 \
+  --out-dir /media/ldk950413/data0/DiffBEV/runs/diagnose \
+  --device cuda:0 \
+  --seed 42
+```
+
+**定位命令（统计+保存8个样本可视化）**:
+```bash
+python /media/ldk950413/data0/DiffBEV/tools/debug/diagnose_segmentation.py \
+  --config /media/ldk950413/data0/DiffBEV/configs/diffbev/diffbev_lss_swin_nuscenes.py \
+  --checkpoint /media/ldk950413/data0/DiffBEV/runs/diffbev_default/latest.pth \
+  --num-samples 50 \
+  --vis-num 8 \
+  --out-dir /media/ldk950413/data0/DiffBEV/runs/diagnose \
+  --device cuda:0 \
+  --seed 42
+```
+
+**说明**: 诊断工具会输出GT/Pred分布、per-class IoU表、mIoU与overall acc，并在`summary.txt`保存结果
+**注意**: 当前val样本文件名不包含相机名时，请不要使用`--camera CAM_FRONT`，否则会跳过全部样本
+
+**解决方案**:
+- 若Pred分布塌缩（单一类别占比>95%），优先检查loss权重与数据标签
+- 若GT分布异常或存在越界label，检查标注文件与pipeline的`reduce_zero_label/ignore_index`
+- 若per-class IoU长期为0，优先检查模型输出是否与GT格式对齐
 
 ## 最终输出检查清单
 

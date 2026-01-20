@@ -1,12 +1,12 @@
 # Baseline配置 - 高显存利用率版本
 # 优化：
 # 1. 增加batch size: 4 -> 8
-# 2. 启用FP16混合精度训练
+# 2. 启用BF16混合精度训练（数值稳定性更好，不需要loss scaling）
 # 3. 预期显存使用: 10GB -> 18-20GB（利用率60-65%）
 
 _base_ = [
     '../_base_/datasets/nuscene_high_memory.py',  # 使用高显存版本的数据配置
-    '../_base_/default_runtime_fp16.py',  # 启用FP16
+    '../_base_/default_runtime_bf16.py',  # 启用BF16混合精度训练（数值稳定性更好，不需要loss scaling）
     '../_base_/schedules/schedule_200k_nuscenes_bs8.py'  # 使用batch size=8的学习率配置
 ]
 

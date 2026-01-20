@@ -86,10 +86,11 @@ class NuscenesDataset(CustomDataset):
                [150, 5, 61], [120, 120, 70], [8, 255, 51]]
 
     def __init__(self, **kwargs):
+        reduce_zero_label = kwargs.pop('reduce_zero_label', False)
         super(NuscenesDataset, self).__init__(
             img_suffix='.png',
             seg_map_suffix='.png',
-            reduce_zero_label=True,
+            reduce_zero_label=reduce_zero_label,
             **kwargs)
 
     def results2img(self, results, imgfile_prefix, to_label_id):

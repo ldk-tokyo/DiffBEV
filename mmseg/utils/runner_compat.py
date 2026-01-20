@@ -94,9 +94,11 @@ class MMCVRunnerCompat(object):
         # 保存第一次迭代的输出用于loss结构检查
         self._first_iter_outputs = None
         
-        # FP16支持（将在配置FP16时初始化）
+        # FP16/BF16支持（将在配置时初始化）
         self.fp16_enabled = False
+        self.bf16_enabled = False
         self.fp16_scaler = None
+        self.amp_dtype = None  # 'float16' 或 'bfloat16'
         
         # 梯度裁剪配置（将在register_training_hooks时设置）
         self.grad_clip = None
@@ -309,14 +311,26 @@ class MMCVRunnerCompat(object):
                             unwrapped_img_metas.append(meta)
                     unwrapped_batch['img_metas'] = unwrapped_img_metas
             
-            # 执行训练步骤（FP16支持：使用autocast包装forward pass）
-            if self.fp16_enabled and AMP_AVAILABLE:
+            # 执行训练步骤（FP16/BF16支持：使用autocast包装forward pass）
+            if (self.fp16_enabled or self.bf16_enabled) and AMP_AVAILABLE:
                 if AMP_NEW_API:
-                    with autocast('cuda'):
-                        outputs = model.train_step(unwrapped_batch, self.optimizer)
+                    # 根据配置选择dtype
+                    if self.bf16_enabled:
+                        # BF16: 使用bfloat16，数值范围与FP32相同，更稳定
+                        with autocast(device_type='cuda', dtype=torch.bfloat16):
+                            outputs = model.train_step(unwrapped_batch, self.optimizer)
+                    else:
+                        # FP16: 默认使用float16
+                        with autocast(device_type='cuda', dtype=torch.float16):
+                            outputs = model.train_step(unwrapped_batch, self.optimizer)
                 else:
-                    with autocast():
-                        outputs = model.train_step(unwrapped_batch, self.optimizer)
+                    # 旧API：FP16使用默认autocast，BF16需要指定dtype
+                    if self.bf16_enabled:
+                        with autocast(dtype=torch.bfloat16):
+                            outputs = model.train_step(unwrapped_batch, self.optimizer)
+                    else:
+                        with autocast():
+                            outputs = model.train_step(unwrapped_batch, self.optimizer)
             else:
                 outputs = model.train_step(unwrapped_batch, self.optimizer)
             
@@ -357,7 +371,7 @@ class MMCVRunnerCompat(object):
                 
                 self.optimizer.zero_grad()
                 
-                # FP16支持：使用GradScaler进行反向传播
+                # FP16/BF16支持：使用GradScaler进行反向传播（仅FP16需要scaler）
                 if self.fp16_enabled and self.fp16_scaler is not None:
                     self.fp16_scaler.scale(loss_tensor).backward()
                     
@@ -406,7 +420,42 @@ class MMCVRunnerCompat(object):
                         # FP16: 正常更新
                         self.fp16_scaler.step(self.optimizer)
                         self.fp16_scaler.update()
+                elif self.bf16_enabled:
+                    # BF16模式：直接反向传播（BF16不需要GradScaler，数值范围与FP32相同）
+                    loss_tensor.backward()
+                    
+                    # 检查梯度是否存在
+                    has_grad = False
+                    has_nan = False
+                    nan_param_name = ""
+                    for name, param in model.named_parameters():
+                        if param.grad is not None:
+                            if param.grad.numel() > 0:  # 确保梯度张量非空
+                                has_grad = True
+                                if torch.isnan(param.grad).any() or torch.isinf(param.grad).any():
+                                    has_nan = True
+                                    nan_param_name = name
+                                    break
+                    
+                    if not has_grad:
+                        warnings.warn(
+                            f"⚠️  Iter {self.iter+1}: 未检测到任何参数的梯度。"
+                            f"这可能表示loss未正确连接到模型参数。"
+                        )
+                    
+                    if has_nan:
+                        warnings.warn(
+                            f"⚠️  Iter {self.iter+1}: 检测到参数 '{nan_param_name}' 的梯度为 NaN/inf，跳过此次更新。"
+                        )
+                    else:
+                        # 梯度裁剪（可选，但建议启用）
+                        if hasattr(self, 'grad_clip') and self.grad_clip is not None:
+                            torch.nn.utils.clip_grad_norm_(model.parameters(), **self.grad_clip)
+                        
+                        # BF16: 直接更新优化器（不需要scaler）
+                        self.optimizer.step()
                 else:
+                    # FP32模式：直接反向传播
                     loss_tensor.backward()
                     
                     # 检查梯度是否存在
@@ -433,19 +482,14 @@ class MMCVRunnerCompat(object):
                     
                     self.optimizer.step()
             
-            # after_train_iter hook只接受runner参数，不传递额外的iter参数
-            self._call_hook('after_train_iter')
-            
-            # 保存checkpoint（根据checkpoint_config）
-            self._save_checkpoint_if_needed()
-            
-            self.iter += 1
-            self.inner_iter += 1
-            
             # 定期记录训练指标到日志（每50次迭代）
+            # 注意：必须在iter递增之前检查，否则会错过记录（如20050变成20051后不满足条件）
             log_interval = getattr(self, 'log_interval', 50)
-            if self.iter % log_interval == 0 and hasattr(self, 'logger'):
-                log_msg_parts = [f"iter={self.iter}"]
+            current_iter = self.iter  # 保存当前iter值用于记录
+            
+            # 检查是否应该记录（使用当前iter，而不是递增后的iter）
+            if (current_iter + 1) % log_interval == 0 and hasattr(self, 'logger'):
+                log_msg_parts = [f"iter={current_iter + 1}"]
                 if 'log_vars' in outputs:
                     for key, value in outputs['log_vars'].items():
                         if isinstance(value, torch.Tensor):
@@ -458,7 +502,17 @@ class MMCVRunnerCompat(object):
                     self.logger.info(" | ".join(log_msg_parts))
                 
                 # 使用metrics_logger记录训练指标到TensorBoard和CSV
-                self._log_training_metrics_to_tb_and_csv(outputs)
+                # 注意：这里使用current_iter+1作为step，因为这是当前迭代完成后的iter值
+                self._log_training_metrics_to_tb_and_csv(outputs, iter_to_log=current_iter + 1)
+            
+            # after_train_iter hook只接受runner参数，不传递额外的iter参数
+            self._call_hook('after_train_iter')
+            
+            # 保存checkpoint（根据checkpoint_config）
+            self._save_checkpoint_if_needed()
+            
+            self.iter += 1
+            self.inner_iter += 1
             
             # 更新进度条
             if use_tqdm:
@@ -600,8 +654,12 @@ class MMCVRunnerCompat(object):
             self._log_buffer = OrderedDict()
         return self._log_buffer
     
-    def _log_training_metrics_to_tb_and_csv(self, outputs):
+    def _log_training_metrics_to_tb_and_csv(self, outputs, iter_to_log=None):
         """记录训练指标到TensorBoard和CSV
+        
+        Args:
+            outputs: 训练迭代的输出
+            iter_to_log: 要记录的iter值（如果为None，使用self.iter）
         
         Args:
             outputs: train_step的输出，包含log_vars
@@ -677,14 +735,17 @@ class MMCVRunnerCompat(object):
                     learning_rate = learning_rate.item()
             
             # 记录到metrics_logger
+            # 使用iter_to_log（如果提供），否则使用self.iter
+            step_to_log = iter_to_log if iter_to_log is not None else self.iter
             self.metrics_logger.log_training_losses(
                 Lwce=Lwce,
                 Ldepth=Ldepth,
                 Ldiff=Ldiff,
                 loss_total=loss_total,
                 learning_rate=learning_rate,
-                step=self.iter,
-                prefix='train'
+                step=step_to_log,
+                prefix='train',
+                mode='train'
             )
             
             # 刷新缓冲区

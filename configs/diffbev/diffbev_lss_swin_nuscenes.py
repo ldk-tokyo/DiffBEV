@@ -4,7 +4,7 @@
 
 _base_ = [
     '../_base_/datasets/nuscene.py',
-    '../_base_/default_runtime.py',
+    '../_base_/default_runtime_bf16.py',  # 启用BF16混合精度训练（数值稳定性更好，不需要loss scaling）
     '../_base_/schedules/schedule_200k_nuscenes.py'  # 使用符合规范的训练计划
 ]
 
@@ -65,6 +65,8 @@ model = dict(
         type='DiffusionHead',  # 使用DiffusionHead（支持diffusion模块）
         num_classes=14,  # nuScenes BEV语义分割：14个类别
         align_corners=True,
+        # outdepth=True 时会在BEV特征中拼接1个深度通道（64+1=65）
+        in_channels=65,
         # Diffusion模块配置
         use_diffusion=True,  # 启用diffusion模块
         # 条件输入配置
@@ -91,12 +93,19 @@ img_norm_cfg = dict(
 
 train_pipeline = [
     dict(type='LoadImageFromFile'),
-    dict(type='LoadAnnotations', reduce_zero_label=False, with_calib=True, imdecode_backend='pyramid'),
+    dict(type='LoadAnnotations',
+         reduce_zero_label=False,
+         with_calib=True,
+         with_depth=True,
+         depth_dir='ann_bev_dir/train_depth',
+         depth_suffix='.npz',
+         depth_scale=256.0,
+         imdecode_backend='pyramid'),
     dict(type='Resize', img_scale=(800, 600), resize_gt=False, keep_ratio=False),  # 论文规范：800x600
     dict(type='PhotoMetricDistortion'),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='DefaultFormatBundle'),
-    dict(type='Collect', keys=['img', 'gt_semantic_seg'], 
+    dict(type='Collect', keys=['img', 'gt_semantic_seg', 'gt_depth', 'gt_depth_mask'], 
          meta_keys=('filename', 'ori_filename', 'ori_shape',
                    'img_shape', 'pad_shape', 'scale_factor', 'img_norm_cfg', 'calib')),
 ]
@@ -129,18 +138,21 @@ data = dict(
         data_root="/media/ldk950413/data0/nuScenes",  # 数据集路径（统一配置，注意大小写）
         img_dir='img_dir/train',
         ann_dir='ann_bev_dir/train',
+        reduce_zero_label=False,
         pipeline=train_pipeline),
     val=dict(
         type='NuscenesDataset',
         data_root="/media/ldk950413/data0/nuScenes",  # 数据集路径（统一配置，注意大小写）
         img_dir='img_dir/val',
         ann_dir='ann_bev_dir/val',
+        reduce_zero_label=False,
         pipeline=test_pipeline),
     test=dict(
         type='NuscenesDataset',
         data_root="/media/ldk950413/data0/nuScenes",  # 数据集路径（统一配置，注意大小写）
         img_dir='img_dir/val',
         ann_dir='ann_bev_dir/val',
+        reduce_zero_label=False,
         pipeline=test_pipeline))
 
 # 优化器和学习率配置已在 _base_ 的 schedule_200k_nuscenes.py 中定义
